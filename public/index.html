@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Previewer - ระบบพรีวิวงานนักเรียนสำหรับครู</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Navigation Header -->
+    <header class="top-nav">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
+            <path d="M9 18c-4.51 2-5-2-7-2"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Repo Previewer</h1>
+          <span class="brand-subtitle">ระบบพรีวิวและตรวจสอบงานนักเรียน (GitHub)</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnOpenInputModal" class="btn btn-primary" title="วางลิงก์ GitHub เพื่อเริ่มโหลดงาน">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+          <span>นำเข้าลิงก์ตรวจงาน</span>
+        </button>
+
+        <button id="btnClearAllCache" class="btn btn-secondary" title="ลบไฟล์แคชทั้งหมดในเครื่อง">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>ล้างแคชทั้งหมด</span>
+        </button>
+
+        <div class="keyboard-tip" title="กดลูกศร ซ้าย/ขวา เพื่อเลื่อนไปคนก่อนหน้า/ถัดไป">
+          คีย์ลัด: <kbd>←</kbd> <kbd>→</kbd>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+      <!-- Left Sidebar: Students List -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title-row">
+            <h2>รายชื่อนักเรียน (<span id="totalStudentsCount">0</span>)</h2>
+            <div class="filter-dropdown">
+              <select id="studentFilterSelect">
+                <option value="all">ทั้งหมด</option>
+                <option value="unviewed">ยังไม่ตรวจ</option>
+                <option value="viewed">ตรวจแล้ว</option>
+                <option value="ready">พร้อมดู</option>
+                <option value="error">พบปัญหา</option>
+              </select>
+            </div>
+          </div>
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="ค้นหาชื่อ หรือ repository...">
+          </div>
+        </div>
+
+        <div class="students-list" id="studentsList">
+          <div class="empty-list-notice">
+            <p>ยังไม่มีรายการงาน</p>
+            <button class="btn btn-sm btn-outline" id="btnEmptyPromptAdd">วางลิงก์เพื่อเริ่มตรวจ</button>
+          </div>
+        </div>
+
+        <!-- Sidebar Summary Footer -->
+        <div class="sidebar-footer">
+          <span id="viewedStatsText">ตรวจแล้ว: 0 / 0</span>
+          <div class="progress-bar-mini">
+            <div class="progress-fill" id="viewedProgressFill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Content Area -->
+      <main class="content-area">
+        <!-- Initial Blank State (When no student is selected) -->
+        <div id="blankState" class="blank-state">
+          <div class="blank-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
+          <h2>ยินดีต้อนรับสู่ Repo Previewer</h2>
+          <p>เครื่องมือช่วยครูดูงานนักเรียนที่ส่งเป็นลิงก์ GitHub ได้ทันที ไม่ต้องดาวน์โหลดและแตกไฟล์ทีละคน</p>
+          <div class="blank-actions">
+            <button class="btn btn-primary" id="btnBlankImport">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+              วางลิงก์ส่งงาน
+            </button>
+            <button class="btn btn-secondary" id="btnBlankLoadSample">
+              ลองโหลดลิงก์ตัวอย่าง (ทดสอบระบบ)
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Student Workspace -->
+        <div id="studentWorkspace" class="student-workspace" style="display: none;">
+          <!-- Student Control Bar -->
+          <div class="student-bar">
+            <div class="student-info">
+              <div class="student-name-row">
+                <h2 id="activeStudentName">ชื่อนักเรียน</h2>
+                <a id="activeRepoLink" href="#" target="_blank" rel="noopener noreferrer" class="repo-link" title="เปิดหน้า GitHub Repository">
+                  <span id="activeRepoText">owner/repo</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                </a>
+              </div>
+              <div class="student-meta-badges">
+                <span id="commitBadge" class="badge badge-subtle">Commit: -</span>
+                <span id="cacheBadge" class="badge badge-subtle">แคชในเครื่อง</span>
+                <span id="hasWebBadge" class="badge badge-success">เว็บสถิต (HTML)</span>
+              </div>
+            </div>
+
+            <!-- Student Quick Actions (Prev/Next, Viewed, Note) -->
+            <div class="student-actions">
+              <div class="nav-btn-group">
+                <button id="btnPrevStudent" class="btn btn-icon" title="คนก่อนหน้า (คีย์ลัด ←)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                  <span>ก่อนหน้า</span>
+                </button>
+                <span class="nav-counter" id="navCounterText">1 / 1</span>
+                <button id="btnNextStudent" class="btn btn-icon" title="คนถัดไป (คีย์ลัด →)">
+                  <span>ถัดไป</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="viewed-checkbox-wrap">
+                <label class="custom-checkbox-label">
+                  <input type="checkbox" id="checkViewed">
+                  <span class="checkbox-box"></span>
+                  <span class="checkbox-text">ตรวจแล้ว</span>
+                </label>
+              </div>
+
+              <button id="btnReloadCurrentRepo" class="btn btn-secondary btn-icon-only" title="ดาวน์โหลด repo นี้ใหม่จาก GitHub">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Note Bar -->
+          <div class="note-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            <input type="text" id="studentNoteInput" placeholder="บันทึกข้อความสั้น ๆ สำหรับคนนี้ (บันทึกอัตโนมัติลงในเครื่อง)...">
+            <span id="noteSaveIndicator" class="save-status">บันทึกแล้ว ✓</span>
+          </div>
+
+          <!-- Tabs Header -->
+          <div class="tabs-header">
+            <div class="tab-buttons">
+              <button class="tab-btn active" data-tab="preview">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+                <span>พรีวิว (Preview)</span>
+              </button>
+              <button class="tab-btn" data-tab="code">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="16 18 22 12 16 6"></polyline>
+                  <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+                <span>โค้ด (Code)</span>
+              </button>
+              <button class="tab-btn" data-tab="inspect">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>ข้อสังเกต (Observations)</span>
+                <span id="inspectBadgeCount" class="tab-badge" style="display: none;">0</span>
+              </button>
+            </div>
+
+            <!-- Tab Context Toolbar (For Preview Responsive switch, Reload, Open External) -->
+            <div id="previewToolbar" class="tab-toolbar">
+              <div class="device-switcher">
+                <button class="device-btn active" data-device="desktop" title="เดสก์ท็อป (100%)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                  </svg>
+                  <span>เดสก์ท็อป</span>
+                </button>
+                <button class="device-btn" data-device="tablet" title="แท็บเล็ต (768px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                  </svg>
+                  <span>แท็บเล็ต</span>
+                </button>
+                <button class="device-btn" data-device="mobile" title="มือถือ (375px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                  </svg>
+                  <span>มือถือ</span>
+                </button>
+              </div>
+
+              <div class="preview-actions">
+                <button id="btnReloadIframe" class="btn btn-sm btn-secondary" title="รีโหลดหน้าพรีวิวนี้ใหม่">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                  </svg>
+                  <span>รีโหลด</span>
+                </button>
+                <button id="btnOpenExternal" class="btn btn-sm btn-secondary" title="เปิดหน้าเว็บนี้ในแท็บใหม่">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                  <span>เปิดแท็บใหม่</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 1: Preview Pane -->
+          <div id="tabPreview" class="tab-pane active">
+            <!-- Non-static web alert banner (shown when no index.html) -->
+            <div id="noWebNotice" class="notice-banner" style="display: none;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <div class="notice-text">
+                <h3>ไม่ใช่เว็บสถิต ดูได้เฉพาะโค้ด</h3>
+                <p>Repository นี้ไม่มีไฟล์ <code>index.html</code> (อาจเป็นโปรเจกต์ Python, Node.js หรือภาษาอื่น) คุณสามารถตรวจดูไฟล์ต่าง ๆ ในแท็บ "โค้ด" ได้ตามปกติ</p>
+              </div>
+              <button id="btnSwitchToCode" class="btn btn-primary btn-sm">ไปที่แท็บโค้ดทันที</button>
+            </div>
+
+            <!-- Iframe Container -->
+            <div class="iframe-container" id="iframeContainer">
+              <iframe id="previewIframe" sandbox="allow-scripts allow-forms allow-same-origin" src="about:blank" title="Student Web Preview"></iframe>
+            </div>
+          </div>
+
+          <!-- Tab 2: Code Viewer Pane -->
+          <div id="tabCode" class="tab-pane">
+            <div class="code-layout">
+              <!-- Left: File Tree Explorer -->
+              <div class="file-tree-sidebar">
+                <div class="file-tree-header">
+                  <span>โครงสร้างไฟล์ (Files)</span>
+                  <button id="btnCollapseAllTree" class="btn-text-sm" title="พับทั้งหมด">พับทั้งหมด</button>
+                </div>
+                <div class="file-tree-content" id="fileTreeContent">
+                  <!-- Generated dynamically -->
+                </div>
+              </div>
+
+              <!-- Right: Code Viewer / Image Viewer -->
+              <div class="code-view-area">
+                <div class="code-view-header">
+                  <div class="file-meta-info">
+                    <span id="activeFileIcon" class="file-icon">📄</span>
+                    <span id="activeFilePath">เลือกไฟล์จากรายการด้านซ้าย</span>
+                    <span id="activeFileStats" class="file-stats"></span>
+                  </div>
+                  <div class="file-actions">
+                    <button id="btnCopyCode" class="btn btn-sm btn-secondary" title="คัดลอกโค้ด">คัดลอก</button>
+                  </div>
+                </div>
+
+                <div class="code-content-wrap" id="codeContentWrap">
+                  <div class="code-placeholder">คลิกเลือกไฟล์เพื่อเปิดดูเนื้อหา</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Observations Pane -->
+          <div id="tabInspect" class="tab-pane">
+            <div class="inspect-container" id="inspectContainer">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal: Bulk Link Input -->
+  <div id="inputModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>วางลิงก์ส่งงานของนักเรียน</h3>
+        <button id="btnCloseModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-help-text">
+          วางหนึ่งรายการต่อหนึ่งบรรทัด รองรับรูปแบบ <code>ลิงก์</code> หรือ <code>ชื่อนักเรียน&lt;tab หรือ comma&gt;ลิงก์</code><br>
+          (ระบบจะตัดส่วนเกิน ตัดรายการซ้ำ และแปลงลิงก์ให้อัตโนมัติ)
+        </p>
+        <textarea id="bulkLinksTextarea" rows="9" placeholder="ตัวอย่าง:
+https://github.com/patvikan24-oss/my-profil-013
+สมชาย เข็มกลัด	https://github.com/somchai/web-profile
+สมหญิง สดใส, https://github.com/somying/my-card/tree/main"></textarea>
+
+        <div class="modal-stats-row">
+          <span id="parsedStatsLabel">ตรวจพบคัดกรอง: 0 รายการ</span>
+          <button id="btnFillSampleLinks" class="btn-text-sm">ใส่ลิงก์ตัวอย่างทดสอบ</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCancelModal" class="btn btn-secondary">ยกเลิก</button>
+        <button id="btnStartFetch" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
+          </svg>
+          <span>เริ่มโหลดและตรวจงาน</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

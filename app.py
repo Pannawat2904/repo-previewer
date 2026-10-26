@@ -67,7 +67,8 @@ app.add_middleware(
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "previewer" / "static"
+PUBLIC_DIR = BASE_DIR / "public"
+STATIC_DIR = PUBLIC_DIR / "static" if (PUBLIC_DIR / "static").exists() else BASE_DIR / "previewer" / "static"
 
 
 # -------------------------------------------------------------
@@ -402,7 +403,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/api/index")
 @app.get("/api")
 async def root():
-    index_file = STATIC_DIR / "index.html"
+    index_file = (PUBLIC_DIR / "index.html") if (PUBLIC_DIR / "index.html").exists() else (STATIC_DIR / "index.html")
     if index_file.exists():
         return FileResponse(index_file)
     return HTMLResponse("<h1>Repo Previewer is running. Static files loading...</h1>")
@@ -411,18 +412,32 @@ async def root():
 @app.api_route("/{catchall:path}", methods=["GET", "HEAD"])
 async def root_fallback_or_student_asset(request: Request, catchall: str):
     """
-    ดักจับ asset ของนักเรียนที่ขึ้นต้นด้วย Absolute path เช่น /style.css หรือ /photo/3984.jpg
-    โดยค้นหาจาก Cookie 'preview_active_repo' ที่เซ็ตไว้ตอนเปิดหน้าพรีวิว
+    1. ดักจับและเสิร์ฟไฟล์สถิตจาก public หรือ static ถ้ามี
+    2. ดักจับ asset ของนักเรียนที่ขึ้นต้นด้วย Absolute path เช่น /photo/3984.jpg
+       โดยค้นหาจาก Cookie 'preview_active_repo' ที่เซ็ตไว้ตอนเปิดหน้าพรีวิว
     """
-    if catchall.startswith(("api/", "static/", "preview-site/")) or not catchall:
-        raise HTTPException(status_code=404, detail="Not Found")
+    clean = catchall.strip("/")
+    if not clean:
+        return await root()
 
+    # ตรวจสอบไฟล์ใน public หรือ static ก่อน
+    if clean.startswith("static/"):
+        sub_rel = clean[len("static/"):]
+        candidate_static = (STATIC_DIR / sub_rel).resolve()
+        if candidate_static.is_file() and candidate_static.is_relative_to(STATIC_DIR):
+            return FileResponse(candidate_static)
+
+    candidate_pub = (PUBLIC_DIR / clean).resolve()
+    if candidate_pub.is_file() and candidate_pub.is_relative_to(PUBLIC_DIR):
+        return FileResponse(candidate_pub)
+
+    # ตรวจสอบ asset ของนักเรียนผ่าน Cookie preview_active_repo
     active_repo_cookie = request.cookies.get("preview_active_repo")
     if active_repo_cookie and "_" in active_repo_cookie:
         parts = active_repo_cookie.split("_", 1)
         owner, repo = parts[0], parts[1]
         repo_dir = get_repo_cache_dir(owner, repo)
-        candidate = (repo_dir / catchall).resolve()
+        candidate = (repo_dir / clean).resolve()
         if candidate.is_file() and candidate.is_relative_to(repo_dir):
             return FileResponse(candidate)
 

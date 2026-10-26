@@ -2,8 +2,16 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/:path*",
-      "destination": "/api/index.py?__vercel_path=:path*"
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/preview-site/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.py"
     }
   ],
   "functions": {
