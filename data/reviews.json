@@ -1,0 +1,14 @@
+{
+  "patvikan24-oss/my-profil-013": {
+    "viewed": false,
+    "note": "ตรวจเรียบร้อย โค้ดและปุ่มทำงานถูกต้อง"
+  },
+  "non-existent-user-12345/broken-repo": {
+    "viewed": true,
+    "note": ""
+  },
+  "torvalds/subsurface-for-dirk": {
+    "viewed": true,
+    "note": ""
+  }
+}
