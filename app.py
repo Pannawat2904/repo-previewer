@@ -389,7 +389,7 @@ async def root():
     return HTMLResponse("<h1>Repo Previewer is running. Static files loading...</h1>")
 
 
-@app.get("/{catchall:path}")
+@app.api_route("/{catchall:path}", methods=["GET", "HEAD"])
 async def root_fallback_or_student_asset(request: Request, catchall: str):
     """
     ดักจับ asset ของนักเรียนที่ขึ้นต้นด้วย Absolute path เช่น /style.css หรือ /photo/3984.jpg
