@@ -399,9 +399,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
+@app.get("/index.html")
+@app.get("/index.htm")
 @app.get("/api/index.py")
 @app.get("/api/index")
 @app.get("/api")
+@app.get("/api/")
 async def root():
     index_file = (PUBLIC_DIR / "index.html") if (PUBLIC_DIR / "index.html").exists() else (STATIC_DIR / "index.html")
     if index_file.exists():
@@ -417,7 +420,7 @@ async def root_fallback_or_student_asset(request: Request, catchall: str):
        โดยค้นหาจาก Cookie 'preview_active_repo' ที่เซ็ตไว้ตอนเปิดหน้าพรีวิว
     """
     clean = catchall.strip("/")
-    if not clean:
+    if not clean or clean in ("index.html", "index.htm", "api", "api/index.py"):
         return await root()
 
     # ตรวจสอบไฟล์ใน public หรือ static ก่อน
@@ -426,10 +429,17 @@ async def root_fallback_or_student_asset(request: Request, catchall: str):
         candidate_static = (STATIC_DIR / sub_rel).resolve()
         if candidate_static.is_file() and candidate_static.is_relative_to(STATIC_DIR):
             return FileResponse(candidate_static)
+        candidate_prev = (BASE_DIR / "previewer" / "static" / sub_rel).resolve()
+        if candidate_prev.is_file() and candidate_prev.is_relative_to(BASE_DIR / "previewer" / "static"):
+            return FileResponse(candidate_prev)
 
     candidate_pub = (PUBLIC_DIR / clean).resolve()
     if candidate_pub.is_file() and candidate_pub.is_relative_to(PUBLIC_DIR):
         return FileResponse(candidate_pub)
+
+    candidate_static_direct = (STATIC_DIR / clean).resolve()
+    if candidate_static_direct.is_file() and candidate_static_direct.is_relative_to(STATIC_DIR):
+        return FileResponse(candidate_static_direct)
 
     # ตรวจสอบ asset ของนักเรียนผ่าน Cookie preview_active_repo
     active_repo_cookie = request.cookies.get("preview_active_repo")
