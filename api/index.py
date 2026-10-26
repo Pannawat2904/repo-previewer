@@ -1,5 +1,5 @@
 """
-Vercel Serverless Entrypoint with ASGI Inspector
+Vercel Serverless Entrypoint with Diagnostic Inspector
 """
 
 import json
@@ -20,16 +20,17 @@ class VercelPathFixer:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            raw_path = scope.get("path", "")
-            query_str = scope.get("query_string", b"").decode("latin1")
-
-            # Endpoint พิเศษตรวจสอบ Scope และ Headers จาก Vercel จริง
-            if "_whoami" in raw_path or "_whoami" in query_str:
-                headers = {k.decode("latin1"): v.decode("latin1") for k, v in scope.get("headers", [])}
+            query_bytes = scope.get("query_string", b"")
+            if b"test=1" in query_bytes:
+                headers_dict = {
+                    k.decode("latin1", "replace"): v.decode("latin1", "replace")
+                    for k, v in scope.get("headers", [])
+                }
                 data = json.dumps({
-                    "scope_path": raw_path,
-                    "scope_query": query_str,
-                    "headers": headers,
+                    "path": scope.get("path"),
+                    "raw_path": scope.get("raw_path", b"").decode("latin1", "replace"),
+                    "query_string": query_bytes.decode("latin1", "replace"),
+                    "headers": headers_dict,
                 }, indent=2).encode("utf-8")
 
                 await send({
