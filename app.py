@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import List, Optional
 
@@ -40,6 +41,36 @@ logging.basicConfig(
 logger = logging.getLogger("repo-previewer")
 
 app = FastAPI(title="Repo Previewer", description="เครื่องมือพรีวิว GitHub Repo สำหรับครู")
+
+
+async def ensure_repo_cached(owner: str, repo: str) -> Path:
+    """
+    ตรวจสอบว่า repo ถูกดาวน์โหลดและแตกไฟล์ไว้ในเครื่อง/Lambda แล้วหรือไม่
+    หากยังไม่มี ให้ดาวน์โหลดและแตกไฟล์อัตโนมัติแบบ On-demand ทันที
+    (เพื่อรองรับสถาปัตยกรรม Serverless หลาย Lambda instance ของ Vercel)
+    """
+    repo_dir = get_repo_cache_dir(owner, repo)
+    if not repo_dir.exists():
+        logger.info(f"Auto-fetching repository on-demand: {owner}/{repo}")
+        item = RepoItem(
+            raw_input=f"https://github.com/{owner}/{repo}",
+            owner=owner,
+            repo=repo,
+            student_name=f"{owner}/{repo}",
+            canonical_url=f"https://github.com/{owner}/{repo}",
+            archive_url=f"https://github.com/{owner}/{repo}/archive/HEAD.zip",
+            original_url=f"https://github.com/{owner}/{repo}",
+            is_valid=True,
+        )
+        try:
+            await fetch_and_cache_repo(item, force_refresh=False)
+        except FetchError as fe:
+            logger.error(f"FetchError auto-fetching {owner}/{repo}: {fe.message}")
+            raise HTTPException(status_code=fe.status_code, detail=fe.message)
+        except Exception as e:
+            logger.error(f"Exception auto-fetching {owner}/{repo}: {e}")
+            raise HTTPException(status_code=500, detail=f"ไม่สามารถดาวน์โหลด repository ได้: {str(e)}")
+    return repo_dir
 
 
 @app.api_route("/debug", methods=["GET", "POST"])
@@ -251,12 +282,10 @@ async def api_fetch_single(req: FetchSingleRequest):
 @app.get("/api/preview/{owner}/{repo}")
 async def api_get_preview(owner: str, repo: str):
     """
-    ดึงหรือเริ่มเปิดเซิร์ฟเวอร์พรีวิวพอร์ตแยก (Lazy start) สำหรับ repo นี้
+    ดึงหรือเริ่มเปิดเซิร์ฟเวอร์พรีวิว (Lazy start) สำหรับ repo นี้
+    พร้อม Auto-fetch อัตโนมัติเมื่อรันบน Serverless (Vercel)
     """
-    repo_dir = get_repo_cache_dir(owner, repo)
-    if not repo_dir.exists():
-        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
-
+    repo_dir = await ensure_repo_cached(owner, repo)
     info = server_manager.get_or_start(owner, repo, repo_dir)
     return info
 
@@ -264,10 +293,7 @@ async def api_get_preview(owner: str, repo: str):
 @app.get("/api/inspect/{owner}/{repo}")
 async def api_inspect_repo(owner: str, repo: str):
     """วิเคราะห์ข้อสังเกตของ repository (ไฟล์ที่อ้างถึงแต่ไม่เจอ, commit, โฟลเดอร์)"""
-    repo_dir = get_repo_cache_dir(owner, repo)
-    if not repo_dir.exists():
-        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
-
+    repo_dir = await ensure_repo_cached(owner, repo)
     res = inspect_repository(repo_dir, original_url=f"https://github.com/{owner}/{repo}")
     return res
 
@@ -275,10 +301,7 @@ async def api_inspect_repo(owner: str, repo: str):
 @app.get("/api/files/tree/{owner}/{repo}")
 async def api_get_file_tree(owner: str, repo: str):
     """ดึงโครงสร้างต้นไม้โฟลเดอร์ของ repository"""
-    repo_dir = get_repo_cache_dir(owner, repo)
-    if not repo_dir.exists():
-        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
-
+    repo_dir = await ensure_repo_cached(owner, repo)
     tree = build_file_tree(repo_dir)
     return {"tree": tree}
 
@@ -286,10 +309,7 @@ async def api_get_file_tree(owner: str, repo: str):
 @app.get("/api/files/content/{owner}/{repo}")
 async def api_get_file_content(owner: str, repo: str, path: str = Query(...)):
     """อ่านเนื้อหาไฟล์สำหรับแสดงในแท็บโค้ด"""
-    repo_dir = get_repo_cache_dir(owner, repo)
-    if not repo_dir.exists():
-        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
-
+    repo_dir = await ensure_repo_cached(owner, repo)
     detail = get_file_details(repo_dir, path)
     return detail
 
@@ -323,17 +343,23 @@ async def api_clear_cache():
 async def serve_preview_site(owner: str, repo: str, subpath: str = ""):
     """
     เสิร์ฟไฟล์เว็บของนักเรียนโดยตรงผ่าน FastAPI (จำเป็นสำหรับการรันบน Vercel หรือโหมด Serverless)
-    ฉีด <base> tag และ script ดักจับ console log พร้อมตั้ง cookie สำหรับ absolute paths
+    ฉีด <base> tag อิงตามโฟลเดอร์ของ index.html และ script ดักจับ console log พร้อมตั้ง cookie สำหรับ absolute paths
     """
-    repo_dir = get_repo_cache_dir(owner, repo)
-    if not repo_dir.exists():
-        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
+    repo_dir = await ensure_repo_cached(owner, repo)
 
-    clean_subpath = subpath.strip("/")
+    clean_subpath = urllib.parse.unquote(subpath.strip("/"))
     if not clean_subpath:
-        clean_subpath = "index.html"
+        has_web, index_rel, _ = find_index_html(repo_dir)
+        clean_subpath = index_rel if (has_web and index_rel) else "index.html"
 
     target_file = (repo_dir / clean_subpath).resolve()
+
+    # หากไม่พบไฟล์ตรง ๆ ให้ลองค้นหาแบบ smart fallback (ไม่สนตัวพิมพ์เล็ก/ใหญ่ หรือค้นหาไฟล์ชื่อเดียวกันใน repo)
+    if not target_file.is_file():
+        filename = Path(clean_subpath).name
+        matches = [p for p in repo_dir.glob("**/*") if p.is_file() and p.name.lower() == filename.lower()]
+        if matches:
+            target_file = matches[0]
 
     # ป้องกัน Directory Traversal
     if not target_file.is_relative_to(repo_dir):
@@ -343,7 +369,7 @@ async def serve_preview_site(owner: str, repo: str, subpath: str = ""):
         target_file = target_file / "index.html"
 
     if not target_file.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail=f"File not found: {clean_subpath}")
 
     suffix = target_file.suffix.lower()
 
@@ -360,8 +386,15 @@ async def serve_preview_site(owner: str, repo: str, subpath: str = ""):
         if content is None:
             content = target_file.read_text(encoding="utf-8", errors="replace")
 
-        # ฉีด <base href="/preview-site/{owner}/{repo}/"> เพื่อให้ relative assets ค้นหาถูกโฟลเดอร์
-        base_tag = f'<base href="/preview-site/{owner}/{repo}/">'
+        # กำหนด base_href ให้ตรงกับโฟลเดอร์ของไฟล์ HTML นั้น ๆ เพื่อให้ relative path (เช่น ../images/ หรือ style.css) อ้างอิงได้ถูกต้อง
+        rel_to_repo = str(target_file.relative_to(repo_dir)).replace("\\", "/")
+        parent_dir = str(Path(rel_to_repo).parent).replace("\\", "/")
+        if parent_dir and parent_dir != ".":
+            base_href = f"/preview-site/{owner}/{repo}/{parent_dir}/"
+        else:
+            base_href = f"/preview-site/{owner}/{repo}/"
+
+        base_tag = f'<base href="{base_href}">'
         if "<base" not in content.lower():
             if "<head>" in content:
                 content = content.replace("<head>", f"<head>\n{base_tag}", 1)
@@ -446,10 +479,20 @@ async def root_fallback_or_student_asset(request: Request, catchall: str):
     if active_repo_cookie and "_" in active_repo_cookie:
         parts = active_repo_cookie.split("_", 1)
         owner, repo = parts[0], parts[1]
-        repo_dir = get_repo_cache_dir(owner, repo)
-        candidate = (repo_dir / clean).resolve()
-        if candidate.is_file() and candidate.is_relative_to(repo_dir):
-            return FileResponse(candidate)
+        try:
+            repo_dir = await ensure_repo_cached(owner, repo)
+            unquoted_clean = urllib.parse.unquote(clean)
+            candidate = (repo_dir / unquoted_clean).resolve()
+            if candidate.is_file() and candidate.is_relative_to(repo_dir):
+                return FileResponse(candidate)
+
+            # Smart search หากนักเรียนระบุชื่อไฟล์ตรงแต่อยู่ในโฟลเดอร์ย่อย
+            filename = Path(unquoted_clean).name
+            matches = [p for p in repo_dir.glob("**/*") if p.is_file() and p.name.lower() == filename.lower()]
+            if matches:
+                return FileResponse(matches[0])
+        except Exception as e:
+            logger.warning(f"Error serving asset via cookie: {e}")
 
     raise HTTPException(status_code=404, detail="Not Found")
 

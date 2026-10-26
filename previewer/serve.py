@@ -261,7 +261,7 @@ class ServerManager:
 
             # กรณีรันบน Vercel (Serverless): ไม่สามารถเปิด TCP Port ในพื้นหลังได้
             # ให้ส่ง URL เป็น Route พิเศษ /preview-site/{owner}/{repo}/{index_rel}
-            if os.environ.get("VERCEL"):
+            if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
                 preview_path = index_rel if index_rel and index_rel != "index.html" else "index.html"
                 return {
                     "key": key,

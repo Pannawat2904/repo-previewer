@@ -620,6 +620,20 @@ async function loadPreviewForStudent(student) {
 
   try {
     const res = await fetch(`/api/preview/${student.owner}/${student.repo}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      elements.hasWebBadge.className = 'badge badge-warning';
+      elements.hasWebBadge.innerText = 'โหลดไม่สำเร็จ';
+      elements.noWebNotice.style.display = 'flex';
+      elements.noWebNotice.querySelector('h3').innerText = 'ไม่สามารถดาวน์โหลด repository ได้';
+      elements.noWebNotice.querySelector('p').innerText = errData.detail || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ GitHub';
+      elements.btnSwitchToCode.style.display = 'none';
+      elements.iframeContainer.style.display = 'none';
+      elements.previewIframe.src = 'about:blank';
+      student.preview_url = null;
+      return;
+    }
+
     const data = await res.json();
 
     if (!data.has_web) {
