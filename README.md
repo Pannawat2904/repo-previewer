@@ -1,6 +1,19 @@
 # Repo Previewer 🧑‍🏫🔍
 
-เครื่องมือพรีวิวและตรวจสอบงานนักเรียนจาก GitHub Repository (Public) รันในเครื่องครูแบบ Local Web App เพื่อให้สามารถดูงานนักเรียนทุกคนได้อย่างรวดเร็ว ไม่ต้องเสียเวลาดาวน์โหลดและแตกไฟล์ทีละคน
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPannawat2904%2Frepo-previewer)
+
+เครื่องมือพรีวิวและตรวจสอบงานนักเรียนจาก GitHub Repository (Public) สามารถรันในเครื่องครูแบบ Local Web App หรือ Deploy ขึ้น Cloud ผ่าน **Vercel** เพื่อเปิดใช้งานได้ทุกที่ทุกเวลา โดยไม่ต้องดาวน์โหลดและแตกไฟล์ทีละคน
+
+---
+
+## ☁️ การ Deploy ขึ้น Vercel (พร้อมใช้งานจริง)
+
+คุณครูสามารถ Deploy ขึ้น Vercel ได้อย่างง่ายดายใน 1 นาที:
+
+1. คลิกที่ปุ่ม **[Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPannawat2904%2Frepo-previewer)** หรือเปิดไปที่ [vercel.com/new](https://vercel.com/new)
+2. เชื่อมต่อบัญชี GitHub และเลือก Import Repository `Pannawat2904/repo-previewer`
+3. กดปุ่ม **"Deploy"** ทันที (ไม่ต้องแก้ไขการตั้งค่าใด ๆ โครงการมีไฟล์ `vercel.json` และ `api/index.py` สำหรับ Serverless รองรับพร้อมใช้งาน 100%)
+4. เมื่อ Deploy เสร็จ คุณครูจะได้ URL เว็บไซต์ เช่น `https://repo-previewer-xxx.vercel.app` สำหรับใช้งานตรวจงานได้ทันทีบนอุปกรณ์ใดก็ได้!
 
 ---
 
