@@ -2,8 +2,8 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.py?__vercel_path=$1"
+      "source": "/:path*",
+      "destination": "/api/index.py?__vercel_path=:path*"
     }
   ],
   "functions": {
