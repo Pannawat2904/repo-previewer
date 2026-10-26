@@ -25,9 +25,35 @@ logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = 50 * 1024 * 1024  # สูงสุด 50 MB
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
-# โฟลเดอร์แคชเริ่มต้น
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_CACHE_DIR = BASE_DIR / "data" / "cache"
+
+
+def get_base_data_dir() -> Path:
+    """
+    คืนค่าโฟลเดอร์สำหรับจัดเก็บข้อมูลและแคช
+    หากรันบน Vercel (Serverless) ระบบไฟล์จะ Read-Only ยกเว้นโฟลเดอร์ /tmp
+    """
+    if os.environ.get("VERCEL"):
+        p = Path("/tmp") / "repo_previewer_data"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    default_dir = BASE_DIR / "data"
+    try:
+        default_dir.mkdir(parents=True, exist_ok=True)
+        # ทดสอบการเขียนไฟล์
+        test_file = default_dir / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return default_dir
+    except Exception:
+        # Fallback ไป /tmp หากไม่มีสิทธิ์เขียนในโฟลเดอร์โปรเจกต์
+        fallback_dir = Path("/tmp") / "repo_previewer_data"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        return fallback_dir
+
+
+DEFAULT_CACHE_DIR = get_base_data_dir() / "cache"
 
 
 class FetchError(Exception):

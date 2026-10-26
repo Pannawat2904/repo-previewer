@@ -30,7 +30,7 @@ from previewer.fetch import (
 )
 from previewer.inspect import inspect_repository
 from previewer.links import RepoItem, normalize_github_url, parse_bulk_links, parse_input_line
-from previewer.serve import find_index_html, server_manager
+from previewer.serve import CONSOLE_INJECT_SCRIPT, find_index_html, server_manager
 from previewer.storage import get_review, load_all_reviews, save_review
 
 logging.basicConfig(
@@ -300,6 +300,81 @@ async def api_clear_cache():
 
 
 # -------------------------------------------------------------
+# Preview-Site Route (สำหรับ Vercel Serverless & Static Proxy)
+# -------------------------------------------------------------
+@app.api_route("/preview-site/{owner}/{repo}/{subpath:path}", methods=["GET", "HEAD"])
+async def serve_preview_site(owner: str, repo: str, subpath: str = ""):
+    """
+    เสิร์ฟไฟล์เว็บของนักเรียนโดยตรงผ่าน FastAPI (จำเป็นสำหรับการรันบน Vercel หรือโหมด Serverless)
+    ฉีด <base> tag และ script ดักจับ console log พร้อมตั้ง cookie สำหรับ absolute paths
+    """
+    repo_dir = get_repo_cache_dir(owner, repo)
+    if not repo_dir.exists():
+        raise HTTPException(status_code=404, detail="ยังไม่ได้ดาวน์โหลด repository นี้")
+
+    clean_subpath = subpath.strip("/")
+    if not clean_subpath:
+        clean_subpath = "index.html"
+
+    target_file = (repo_dir / clean_subpath).resolve()
+
+    # ป้องกัน Directory Traversal
+    if not target_file.is_relative_to(repo_dir):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if target_file.is_dir():
+        target_file = target_file / "index.html"
+
+    if not target_file.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    suffix = target_file.suffix.lower()
+
+    # หากเป็นไฟล์ HTML ให้ฉีด Base tag, Console logging script และเซ็ต Cookie
+    if suffix in (".html", ".htm"):
+        content = None
+        for enc in ("utf-8", "utf-8-sig", "tis-620", "cp874", "latin1"):
+            try:
+                content = target_file.read_text(encoding=enc)
+                break
+            except Exception:
+                continue
+
+        if content is None:
+            content = target_file.read_text(encoding="utf-8", errors="replace")
+
+        # ฉีด <base href="/preview-site/{owner}/{repo}/"> เพื่อให้ relative assets ค้นหาถูกโฟลเดอร์
+        base_tag = f'<base href="/preview-site/{owner}/{repo}/">'
+        if "<base" not in content.lower():
+            if "<head>" in content:
+                content = content.replace("<head>", f"<head>\n{base_tag}", 1)
+            elif "</head>" in content:
+                content = content.replace("</head>", f"{base_tag}\n</head>", 1)
+            else:
+                content = f"{base_tag}\n{content}"
+
+        # ฉีด Logging script
+        if "</head>" in content:
+            content = content.replace("</head>", f"{CONSOLE_INJECT_SCRIPT}\n</head>", 1)
+        elif "</body>" in content:
+            content = content.replace("</body>", f"{CONSOLE_INJECT_SCRIPT}\n</body>", 1)
+        else:
+            content = f"{CONSOLE_INJECT_SCRIPT}\n{content}"
+
+        response = HTMLResponse(content)
+        # เซ็ต Cookie ระบุ repo ที่เปิดพรีวิวอยู่ปัจจุบัน เพื่อให้ root-relative paths เช่น /photo/3984.jpg ทำงานได้
+        response.set_cookie(
+            key="preview_active_repo",
+            value=f"{owner}_{repo}",
+            path="/",
+            samesite="lax",
+        )
+        return response
+
+    return FileResponse(target_file)
+
+
+# -------------------------------------------------------------
 # Static files and Home Page
 # -------------------------------------------------------------
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -312,6 +387,27 @@ async def root():
     if index_file.exists():
         return FileResponse(index_file)
     return HTMLResponse("<h1>Repo Previewer is running. Static files loading...</h1>")
+
+
+@app.get("/{catchall:path}")
+async def root_fallback_or_student_asset(request: Request, catchall: str):
+    """
+    ดักจับ asset ของนักเรียนที่ขึ้นต้นด้วย Absolute path เช่น /style.css หรือ /photo/3984.jpg
+    โดยค้นหาจาก Cookie 'preview_active_repo' ที่เซ็ตไว้ตอนเปิดหน้าพรีวิว
+    """
+    if catchall.startswith(("api/", "static/", "preview-site/")) or not catchall:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    active_repo_cookie = request.cookies.get("preview_active_repo")
+    if active_repo_cookie and "_" in active_repo_cookie:
+        parts = active_repo_cookie.split("_", 1)
+        owner, repo = parts[0], parts[1]
+        repo_dir = get_repo_cache_dir(owner, repo)
+        candidate = (repo_dir / catchall).resolve()
+        if candidate.is_file() and candidate.is_relative_to(repo_dir):
+            return FileResponse(candidate)
+
+    raise HTTPException(status_code=404, detail="Not Found")
 
 
 def run():

@@ -9,10 +9,11 @@ import threading
 from pathlib import Path
 from typing import Dict, Optional
 
+from previewer.fetch import get_base_data_dir
+
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-STORAGE_FILE = BASE_DIR / "data" / "reviews.json"
+STORAGE_FILE = get_base_data_dir() / "reviews.json"
 _lock = threading.Lock()
 
 

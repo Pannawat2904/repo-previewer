@@ -259,7 +259,21 @@ class ServerManager:
                     "index_rel": None,
                 }
 
-            # ตรวจสอบว่ามีเซิร์ฟเวอร์ทำงานอยู่แล้วหรือไม่
+            # กรณีรันบน Vercel (Serverless): ไม่สามารถเปิด TCP Port ในพื้นหลังได้
+            # ให้ส่ง URL เป็น Route พิเศษ /preview-site/{owner}/{repo}/{index_rel}
+            if os.environ.get("VERCEL"):
+                preview_path = index_rel if index_rel and index_rel != "index.html" else "index.html"
+                return {
+                    "key": key,
+                    "has_web": True,
+                    "message": "พร้อมพรีวิว (Vercel Serverless)",
+                    "url": f"/preview-site/{owner}/{repo}/{preview_path}",
+                    "port": None,
+                    "index_rel": index_rel,
+                    "is_subfolder": index_rel != "index.html",
+                }
+
+            # ตรวจสอบว่ามีเซิร์ฟเวอร์ทำงานอยู่แล้วหรือไม่ (Local run)
             instance = self.active_servers.get(key)
             if instance and instance.server:
                 instance.last_accessed = time.time()
