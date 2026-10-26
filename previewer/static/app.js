@@ -480,9 +480,12 @@ function renderStudentsList() {
     if (student.status === 'loading') statusTitle = student.loadingMessage || 'กำลังโหลด...';
     else if (student.status === 'error') statusTitle = student.error_message || 'พบข้อผิดพลาด';
 
+    const initial = (student.student_name || student.owner || 'S').trim().charAt(0).toUpperCase();
+
     itemEl.innerHTML = `
       <div class="student-item-left">
         <div class="student-item-checkbox ${student.viewed ? 'checked' : ''}" title="คลิกเพื่อทำเครื่องหมายว่าตรวจแล้ว"></div>
+        <div class="student-avatar">${escapeHtml(initial)}</div>
         <div class="student-item-details">
           <span class="student-item-name" title="${escapeHtml(student.student_name)}">${escapeHtml(student.student_name)}</span>
           <span class="student-item-sub" title="${escapeHtml(student.owner ? `${student.owner}/${student.repo}` : student.raw_input)}">
