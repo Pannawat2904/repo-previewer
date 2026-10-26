@@ -41,6 +41,22 @@ logger = logging.getLogger("repo-previewer")
 
 app = FastAPI(title="Repo Previewer", description="เครื่องมือพรีวิว GitHub Repo สำหรับครู")
 
+
+@app.api_route("/debug", methods=["GET", "POST"])
+async def debug_info(request: Request):
+    """Debug endpoint เพื่อดู scope และ headers ที่ Vercel ส่งเข้ามา"""
+    return {
+        "method": request.method,
+        "url": str(request.url),
+        "path": request.scope.get("path"),
+        "raw_query": request.scope.get("query_string", b"").decode(),
+        "headers": {
+            k.decode(): v.decode()
+            for k, v in request.scope.get("headers", [])
+            if k.lower().startswith((b"x-", b"host"))
+        },
+    }
+
 # อนุญาต CORS สำหรับการพัฒนาและการเชื่อมต่อภายใน
 app.add_middleware(
     CORSMiddleware,
