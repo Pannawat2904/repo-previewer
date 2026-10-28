@@ -355,6 +355,11 @@ function closeMobileSidebar() {
 // -------------------------------------------------------------
 function setupIframeMessageListener() {
   window.addEventListener('message', (event) => {
+    // ตรวจสอบความปลอดภัย: อนุญาตเฉพาะข้อความที่มาจาก iframe พรีวิวของเราเท่านั้น ป้องกันการปลอมแปลงจากแท็บอื่น
+    if (elements.previewIframe && event.source !== elements.previewIframe.contentWindow) {
+      return;
+    }
+
     const data = event.data;
     if (!data || data.source !== 'repo-previewer-sandbox') return;
 

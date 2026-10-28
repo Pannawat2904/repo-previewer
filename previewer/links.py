@@ -34,6 +34,9 @@ GITHUB_PATTERN = re.compile(
 )
 
 
+GITHUB_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
+
+
 def normalize_github_url(url_str: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     แยก owner และ repo จาก URL
@@ -74,9 +77,12 @@ def normalize_github_url(url_str: str) -> Tuple[Optional[str], Optional[str], Op
     if not owner or not repo:
         return None, None, "ชื่อ owner หรือ repository ไม่ถูกต้อง"
 
-    # ป้องกัน path traversal ในชื่อ owner/repo
-    if ".." in owner or ".." in repo or "/" in owner or "/" in repo or "\\" in owner or "\\" in repo:
-        return None, None, "ชื่อ repository มีอักขระที่ไม่อนุญาต"
+    # ป้องกัน path traversal และอักขระพิเศษในชื่อ owner/repo
+    if not GITHUB_NAME_REGEX.match(owner) or not GITHUB_NAME_REGEX.match(repo):
+        return None, None, "ชื่อ owner หรือ repository มีอักขระที่ไม่อนุญาต"
+
+    if owner in (".", "..") or repo in (".", "..") or owner.startswith(".") or repo.startswith("."):
+        return None, None, "ชื่อ owner หรือ repository ไม่อนุญาตให้ขึ้นต้นด้วยจุด"
 
     return owner, repo, None
 

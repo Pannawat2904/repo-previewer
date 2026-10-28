@@ -168,6 +168,12 @@ def safe_extract_zip(zip_bytes: bytes, target_dir: Path) -> Tuple[int, int]:
             total_files += 1
             total_size += info.file_size
 
+            # ป้องกัน Zip-Bomb และการผลาญทรัพยากร
+            if total_files > 5000:
+                raise FetchError("ความเสี่ยงความปลอดภัย: มีจำนวนไฟล์เกินกำหนด (จำกัดไม่เกิน 5,000 ไฟล์ต่อ repo)")
+            if total_size > 150 * 1024 * 1024:
+                raise FetchError("ความเสี่ยงความปลอดภัย (Zip-Bomb): ขนาดไฟล์แตกออกมาเกินขีดจำกัด (จำกัดไม่เกิน 150 MB)")
+
     return total_files, total_size
 
 

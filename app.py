@@ -98,6 +98,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # ป้องกัน MIME-type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # ป้องกัน Clickjacking: อนุญาตให้แสดงผลเฉพาะใน origin เดียวกัน
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # กำหนด Referrer policy ให้ปลอดภัย
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # ป้องกันสคริปต์ในหน้าพรีวิวเข้าถึงกล้อง ไมโครโฟน ตำแหน่งที่ตั้ง หรือการชำระเงินของครู
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    # XSS Protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 STATIC_DIR = PUBLIC_DIR / "static" if (PUBLIC_DIR / "static").exists() else BASE_DIR / "previewer" / "static"
@@ -309,7 +326,11 @@ async def api_get_file_tree(owner: str, repo: str):
 
 @app.get("/api/files/content/{owner}/{repo}")
 async def api_get_file_content(owner: str, repo: str, path: str = Query(...)):
-    """อ่านเนื้อหาไฟล์สำหรับแสดงในแท็บโค้ด"""
+    """อ่านเนื้อหาไฟล์สำหรับแสดงในแท็บโค้ด พร้อมระบบป้องกันการอ่านไฟล์ระบบหรือไฟล์ซ่อน"""
+    clean_p = path.strip("/\\")
+    parts = Path(clean_p).parts
+    if any(p.startswith(".") and p not in (".gitignore",) for p in parts) or "repo_meta" in clean_p.lower():
+        raise HTTPException(status_code=403, detail="Access to hidden or system files is restricted")
     repo_dir = await ensure_repo_cached(owner, repo)
     detail = get_file_details(repo_dir, path)
     return detail
@@ -345,7 +366,14 @@ async def serve_preview_site(request: Request, owner: str, repo: str, subpath: s
     """
     เสิร์ฟไฟล์เว็บของนักเรียนโดยตรงผ่าน FastAPI (จำเป็นสำหรับการรันบน Vercel หรือโหมด Serverless)
     ฉีด <base> tag อิงตามโฟลเดอร์ของ index.html และ script ดักจับ console log พร้อมตั้ง cookie สำหรับ absolute paths
+    พร้อมระบบตรวจสอบความปลอดภัย (Path Traversal, Regex validation, CSP)
     """
+    # ตรวจสอบรูปแบบ owner และ repo ตามมาตรฐาน GitHub
+    if not re.match(r"^[A-Za-z0-9_.-]{1,100}$", owner) or not re.match(r"^[A-Za-z0-9_.-]{1,100}$", repo):
+        raise HTTPException(status_code=400, detail="Invalid repository identifier")
+    if owner in (".", "..") or repo in (".", "..") or owner.startswith(".") or repo.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid repository identifier")
+
     try:
         repo_dir = await ensure_repo_cached(owner, repo)
     except Exception as e:
@@ -402,6 +430,11 @@ async def serve_preview_site(request: Request, owner: str, repo: str, subpath: s
     if not target_file.is_relative_to(repo_dir):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # ป้องกันการเข้าถึงไฟล์ซ่อน ไฟล์ระบบ (.git, .env, .repo_meta.json ฯลฯ)
+    rel_parts = target_file.relative_to(repo_dir).parts
+    if any(part.startswith(".") for part in rel_parts):
+        raise HTTPException(status_code=403, detail="Access to hidden or system files is restricted")
+
     if target_file.is_dir():
         target_file = target_file / "index.html"
 
@@ -449,6 +482,11 @@ async def serve_preview_site(request: Request, owner: str, repo: str, subpath: s
             content = f"{CONSOLE_INJECT_SCRIPT}\n{content}"
 
         response = HTMLResponse(content)
+        # Content Security Policy: จำกัดการ frame ให้อยู่ในหน้าเว็บของครูเท่านั้น
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; "
+            "frame-ancestors 'self';"
+        )
         # เซ็ต Cookie ระบุ repo ที่เปิดพรีวิวอยู่ปัจจุบัน เพื่อให้ root-relative paths เช่น /photo/3984.jpg ทำงานได้
         response.set_cookie(
             key="preview_active_repo",
