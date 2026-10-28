@@ -207,6 +207,9 @@ function setupEventListeners() {
     });
   });
 
+  // ตั้งค่าโหมดเริ่มต้นเป็น Desktop ทันทีเมื่อเปิดระบบ เพื่อให้ Iframe ขยายเต็มจอ 100% ตั้งแต่แรก
+  setDeviceMode(state.deviceMode || 'desktop');
+
   // Iframe actions
   elements.btnReloadIframe.addEventListener('click', () => {
     const cur = getCurrentStudent();
@@ -996,7 +999,9 @@ function setDeviceMode(device) {
     btn.classList.toggle('active', btn.dataset.device === device);
   });
 
-  elements.iframeContainer.className = `iframe-container device-${device}`;
+  if (elements.iframeContainer) {
+    elements.iframeContainer.className = `iframe-container device-${device}`;
+  }
 }
 
 // -------------------------------------------------------------
