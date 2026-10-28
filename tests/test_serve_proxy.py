@@ -29,6 +29,18 @@ class TestServeProxy(unittest.TestCase):
         parent_root = str(Path(rel_root).parent).replace("\\", "/")
         self.assertEqual(parent_root, ".")
 
+    def test_relative_escape_fallback(self):
+        from fastapi.testclient import TestClient
+        from app import app
+        client = TestClient(app)
+        # patvikan24-oss_my-profil-013 is cached locally in data/cache
+        res = client.get(
+            "/preview-site/patvikan24-oss/photo/3984.jpg",
+            cookies={"preview_active_repo": "patvikan24-oss_my-profil-013"}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertGreater(len(res.content), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

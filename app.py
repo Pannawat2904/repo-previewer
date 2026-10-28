@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+import re
 import urllib.parse
 from pathlib import Path
 from typing import List, Optional
@@ -340,12 +341,48 @@ async def api_clear_cache():
 # Preview-Site Route (สำหรับ Vercel Serverless & Static Proxy)
 # -------------------------------------------------------------
 @app.api_route("/preview-site/{owner}/{repo}/{subpath:path}", methods=["GET", "HEAD"])
-async def serve_preview_site(owner: str, repo: str, subpath: str = ""):
+async def serve_preview_site(request: Request, owner: str, repo: str, subpath: str = ""):
     """
     เสิร์ฟไฟล์เว็บของนักเรียนโดยตรงผ่าน FastAPI (จำเป็นสำหรับการรันบน Vercel หรือโหมด Serverless)
     ฉีด <base> tag อิงตามโฟลเดอร์ของ index.html และ script ดักจับ console log พร้อมตั้ง cookie สำหรับ absolute paths
     """
-    repo_dir = await ensure_repo_cached(owner, repo)
+    try:
+        repo_dir = await ensure_repo_cached(owner, repo)
+    except Exception as e:
+        # หากค้นหา repo ไม่พบ อาจเกิดจากนักเรียนระบุ relative path เช่น ../photo/3984.jpg
+        # ที่หลุดออกจาก root repo ทำให้ URL แปลงเป็น /preview-site/{owner}/{subfolder}/{filename}
+        # ลองกู้คืนจาก Cookie preview_active_repo หรือ Referer header
+        active_repo_cookie = request.cookies.get("preview_active_repo")
+        real_owner, real_repo = None, None
+        if active_repo_cookie and "_" in active_repo_cookie:
+            c_owner, c_repo = active_repo_cookie.split("_", 1)
+            if c_owner.lower() == owner.lower():
+                real_owner, real_repo = c_owner, c_repo
+
+        if not real_owner:
+            referer = request.headers.get("referer", "")
+            match = re.search(r"/preview-site/([^/]+)/([^/]+)/?", referer)
+            if match:
+                ref_owner, ref_repo = match.group(1), match.group(2)
+                if ref_owner.lower() == owner.lower():
+                    real_owner, real_repo = ref_owner, ref_repo
+
+        if real_owner and real_repo:
+            try:
+                real_repo_dir = await ensure_repo_cached(real_owner, real_repo)
+                clean_target = f"{repo}/{urllib.parse.unquote(subpath.strip('/'))}".strip("/")
+                candidate = (real_repo_dir / clean_target).resolve()
+                if candidate.is_file() and candidate.is_relative_to(real_repo_dir):
+                    return FileResponse(candidate)
+                # Smart search ใน repo จริง
+                filename = Path(clean_target).name
+                matches = [p for p in real_repo_dir.glob("**/*") if p.is_file() and p.name.lower() == filename.lower()]
+                if matches:
+                    return FileResponse(matches[0])
+            except Exception:
+                pass
+
+        raise HTTPException(status_code=404, detail=f"Repository not found or error loading: {owner}/{repo}")
 
     clean_subpath = urllib.parse.unquote(subpath.strip("/"))
     if not clean_subpath:

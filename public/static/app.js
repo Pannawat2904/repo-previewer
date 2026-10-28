@@ -82,13 +82,15 @@ const elements = {
   btnFillSampleLinks: document.getElementById('btnFillSampleLinks'),
   btnStartFetch: document.getElementById('btnStartFetch'),
   btnClearAllCache: document.getElementById('btnClearAllCache'),
+  btnExportCsv: document.getElementById('btnExportCsv'),
 };
 
-// Sample test link data
-const SAMPLE_LINKS = `https://github.com/patvikan24-oss/my-profil-013
-ปัฐวิกาณ (ลูกปัด)\thttps://github.com/patvikan24-oss/my-profil-013/tree/main
-สมชาย เข็มกลัด, https://github.com/torvalds/subsurface-for-dirk/blob/master/README.md
-https://github.com/non-existent-user-12345/broken-repo`;
+// Sample test link data with realistic student submissions
+const SAMPLE_LINKS = `ปัฐวิกาณ (ลูกปัด)\thttps://github.com/patvikan24-oss/my-profil-013
+สัญหณัฐ (029)\thttps://github.com/sanhanut200419-cmd/my-profile-029
+พงศธร (045)\thttps://github.com/Pongsatorn045/My-profile-045
+ธารณิดา (006)\thttps://github.com/tharanida006/my-profile-006
+สมชาย เข็มกลัด\thttps://github.com/torvalds/subsurface-for-dirk`;
 
 // -------------------------------------------------------------
 // Initialization
@@ -131,6 +133,11 @@ function setupEventListeners() {
 
   // Clear cache
   elements.btnClearAllCache.addEventListener('click', handleClearAllCache);
+
+  // Export CSV
+  if (elements.btnExportCsv) {
+    elements.btnExportCsv.addEventListener('click', exportResultsToCsv);
+  }
 
   // Filter & Search
   elements.studentFilterSelect.addEventListener('change', (e) => {
@@ -215,13 +222,13 @@ function setupEventListeners() {
 }
 
 // -------------------------------------------------------------
-// Keyboard Navigation (← / →)
+// Keyboard Navigation (← / → / Space / 1-3 / R)
 // -------------------------------------------------------------
 function setupKeyboardShortcuts() {
   window.addEventListener('keydown', (e) => {
     // ข้ามเมื่อผู้ใช้กำลังพิมพ์ในช่อง input, textarea หรือเปิด modal
     const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-    if (tag === 'input' || tag === 'textarea' || elements.inputModal.style.display !== 'none') {
+    if (tag === 'input' || tag === 'textarea' || (elements.inputModal && elements.inputModal.style.display !== 'none')) {
       return;
     }
 
@@ -231,8 +238,69 @@ function setupKeyboardShortcuts() {
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       navigateNext();
+    } else if (e.key === ' ' || e.key === 'v' || e.key === 'V') {
+      e.preventDefault();
+      const current = getCurrentStudent();
+      if (current) {
+        handleViewedToggle(state.currentIndex, !current.viewed);
+      }
+    } else if (e.key === '1') {
+      e.preventDefault();
+      switchTab('preview');
+    } else if (e.key === '2') {
+      e.preventDefault();
+      switchTab('code');
+    } else if (e.key === '3') {
+      e.preventDefault();
+      switchTab('inspect');
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      reloadCurrentRepo();
     }
   });
+}
+
+// -------------------------------------------------------------
+// Export Results to CSV (with Thai UTF-8 BOM support)
+// -------------------------------------------------------------
+function exportResultsToCsv() {
+  if (!state.students || state.students.length === 0) {
+    alert('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้าลิงก์ก่อน');
+    return;
+  }
+
+  const headers = ['ลำดับ', 'ชื่อนักเรียน', 'Repository (Owner/Repo)', 'ลิงก์ GitHub', 'สถานะเว็บ', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
+  const rows = state.students.map((s, index) => {
+    const hasWebText = s.meta?.has_web ? 'ใช่ (HTML)' : (s.status === 'ready' ? 'ไม่ใช่เว็บสถิต' : '-');
+    const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
+    const commitSha = s.meta?.commit_sha ? s.meta.commit_sha.substring(0, 7) : '-';
+    const noteText = s.note || '';
+
+    return [
+      index + 1,
+      `"${(s.student_name || '').replace(/"/g, '""')}"`,
+      `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : s.raw_input).replace(/"/g, '""')}"`,
+      `"${(s.canonical_url || '').replace(/"/g, '""')}"`,
+      `"${hasWebText}"`,
+      `"${viewedText}"`,
+      `"${noteText.replace(/"/g, '""')}"`,
+      `"${commitSha}"`,
+    ].join(',');
+  });
+
+  // UTF-8 BOM (\uFEFF) ensures Excel opens Thai text correctly
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `repo-preview-report-${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 // -------------------------------------------------------------

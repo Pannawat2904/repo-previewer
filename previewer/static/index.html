@@ -34,15 +34,22 @@
           <span>นำเข้าลิงก์ตรวจงาน</span>
         </button>
 
+        <button id="btnExportCsv" class="btn btn-secondary" title="ส่งออกรายงานผลการตรวจและบันทึกข้อความทั้งหมดเป็นไฟล์ CSV (Excel)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
+          </svg>
+          <span>ส่งออกผลตรวจ (CSV)</span>
+        </button>
+
         <button id="btnClearAllCache" class="btn btn-secondary" title="ลบไฟล์แคชทั้งหมดในเครื่อง">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           </svg>
-          <span>ล้างแคชทั้งหมด</span>
+          <span>ล้างแคช</span>
         </button>
 
-        <div class="keyboard-tip" title="กดลูกศร ซ้าย/ขวา เพื่อเลื่อนไปคนก่อนหน้า/ถัดไป">
-          คีย์ลัด: <kbd>←</kbd> <kbd>→</kbd>
+        <div class="keyboard-tip" title="←/→ สลับคน, Space หรือ V ตรวจแล้ว, 1-3 สลับแท็บ, R รีโหลด">
+          คีย์ลัด: <kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd> <kbd>1-3</kbd>
         </div>
       </div>
     </header>
@@ -53,7 +60,7 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="sidebar-title-row">
-            <h2>รายชื่อนักเรียน (<span id="totalStudentsCount">0</span>)</h2>
+            <h2>รายชื่อนักเรียน <span class="counter-badge" id="totalStudentsCount">0</span></h2>
             <div class="filter-dropdown">
               <select id="studentFilterSelect">
                 <option value="all">ทั้งหมด</option>
