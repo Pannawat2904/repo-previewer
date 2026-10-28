@@ -321,18 +321,25 @@ function exportResultsToCsv() {
 }
 
 // -------------------------------------------------------------
-// Mobile Drawer Toggling
+// Sidebar Drawer & Collapse Toggling
 // -------------------------------------------------------------
 function toggleMobileSidebar() {
   const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
   const backdrop = elements.sidebarBackdrop;
   if (!sidebar) return;
-  const isOpen = sidebar.classList.contains('mobile-open');
-  if (isOpen) {
-    closeMobileSidebar();
+
+  if (window.innerWidth <= 860) {
+    // Mobile Drawer mode
+    const isOpen = sidebar.classList.contains('mobile-open');
+    if (isOpen) {
+      closeMobileSidebar();
+    } else {
+      sidebar.classList.add('mobile-open');
+      if (backdrop) backdrop.classList.add('visible');
+    }
   } else {
-    sidebar.classList.add('mobile-open');
-    if (backdrop) backdrop.classList.add('visible');
+    // Desktop Fullscreen/Collapse toggle
+    sidebar.classList.toggle('collapsed');
   }
 }
 
