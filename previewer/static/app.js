@@ -43,6 +43,12 @@ const elements = {
   studentNoteInput: document.getElementById('studentNoteInput'),
   noteSaveIndicator: document.getElementById('noteSaveIndicator'),
   
+  // Mobile Drawer elements
+  btnToggleMobileSidebar: document.getElementById('btnToggleMobileSidebar'),
+  btnCloseMobileSidebar: document.getElementById('btnCloseMobileSidebar'),
+  sidebarBackdrop: document.getElementById('sidebarBackdrop'),
+  mainSidebar: document.getElementById('mainSidebar'),
+  
   tabButtons: document.querySelectorAll('.tab-btn'),
   tabPanes: {
     preview: document.getElementById('tabPreview'),
@@ -137,6 +143,17 @@ function setupEventListeners() {
   // Export CSV
   if (elements.btnExportCsv) {
     elements.btnExportCsv.addEventListener('click', exportResultsToCsv);
+  }
+
+  // Mobile Drawer toggles
+  if (elements.btnToggleMobileSidebar) {
+    elements.btnToggleMobileSidebar.addEventListener('click', toggleMobileSidebar);
+  }
+  if (elements.btnCloseMobileSidebar) {
+    elements.btnCloseMobileSidebar.addEventListener('click', closeMobileSidebar);
+  }
+  if (elements.sidebarBackdrop) {
+    elements.sidebarBackdrop.addEventListener('click', closeMobileSidebar);
   }
 
   // Filter & Search
@@ -301,6 +318,29 @@ function exportResultsToCsv() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// -------------------------------------------------------------
+// Mobile Drawer Toggling
+// -------------------------------------------------------------
+function toggleMobileSidebar() {
+  const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
+  const backdrop = elements.sidebarBackdrop;
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.contains('mobile-open');
+  if (isOpen) {
+    closeMobileSidebar();
+  } else {
+    sidebar.classList.add('mobile-open');
+    if (backdrop) backdrop.classList.add('visible');
+  }
+}
+
+function closeMobileSidebar() {
+  const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
+  const backdrop = elements.sidebarBackdrop;
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (backdrop) backdrop.classList.remove('visible');
 }
 
 // -------------------------------------------------------------
@@ -638,6 +678,11 @@ async function selectStudent(index) {
   if (index < 0 || index >= state.students.length) return;
   state.currentIndex = index;
   const student = state.students[index];
+
+  // ปิด Drawer บนหน้าจอมือถืออัตโนมัติเมื่อเลือกนักเรียน
+  if (window.innerWidth <= 860) {
+    closeMobileSidebar();
+  }
 
   // อัปเดต UI ให้แสดง workspace
   elements.blankState.style.display = 'none';

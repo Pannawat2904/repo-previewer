@@ -14,6 +14,13 @@
     <!-- Top Navigation Header -->
     <header class="top-nav">
       <div class="brand">
+        <button id="btnToggleMobileSidebar" class="btn btn-secondary btn-icon-only mobile-toggle-btn" title="เปิด/ปิด รายชื่อนักเรียน">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
         <div class="brand-logo">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
@@ -54,21 +61,27 @@
       </div>
     </header>
 
+    <!-- Backdrop for mobile drawer -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
     <!-- Main Container -->
     <div class="main-container">
       <!-- Left Sidebar: Students List -->
-      <aside class="sidebar">
+      <aside class="sidebar" id="mainSidebar">
         <div class="sidebar-header">
           <div class="sidebar-title-row">
             <h2>รายชื่อนักเรียน <span class="counter-badge" id="totalStudentsCount">0</span></h2>
-            <div class="filter-dropdown">
-              <select id="studentFilterSelect">
-                <option value="all">ทั้งหมด</option>
-                <option value="unviewed">ยังไม่ตรวจ</option>
-                <option value="viewed">ตรวจแล้ว</option>
-                <option value="ready">พร้อมดู</option>
-                <option value="error">พบปัญหา</option>
-              </select>
+            <div class="sidebar-header-right">
+              <div class="filter-dropdown">
+                <select id="studentFilterSelect">
+                  <option value="all">ทั้งหมด</option>
+                  <option value="unviewed">ยังไม่ตรวจ</option>
+                  <option value="viewed">ตรวจแล้ว</option>
+                  <option value="ready">พร้อมดู</option>
+                  <option value="error">พบปัญหา</option>
+                </select>
+              </div>
+              <button id="btnCloseMobileSidebar" class="btn-close mobile-close-btn" title="ปิดเมนูรายชื่อ">&times;</button>
             </div>
           </div>
           <div class="search-box">
