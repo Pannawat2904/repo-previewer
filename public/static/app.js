@@ -4,6 +4,25 @@
 
 // Application State
 const state = {
+  courses: [
+    {
+      id: 'course-web-1',
+      subject: 'การพัฒนาเว็บไซต์ (Web)',
+      assignment: 'งานที่ 1',
+      students: [],
+      currentIndex: -1,
+      bulkLinksText: '',
+    },
+    {
+      id: 'course-python-oop-1',
+      subject: 'การเขียนโปรแกรมเชิงวัตถุเบื้องต้น (Python OOP)',
+      assignment: 'งานที่ 1',
+      students: [],
+      currentIndex: -1,
+      bulkLinksText: '',
+    },
+  ],
+  activeCourseId: 'course-web-1',
   students: [],
   currentIndex: -1,
   activeTab: 'preview',
@@ -14,10 +33,26 @@ const state = {
   activeFilePath: null,
   inspectData: null,
   noteDebounceTimer: null,
+  importMode: 'github',
+  pendingUploadFiles: [],
+  activePyFile: null,
+  pyOriginalCodeMap: {},
 };
+
+let pyodideReadyPromise = null;
 
 // DOM Elements
 const elements = {
+  courseSelect: document.getElementById('courseSelect'),
+  btnToggleAddCourse: document.getElementById('btnToggleAddCourse'),
+  btnDeleteCourse: document.getElementById('btnDeleteCourse'),
+  courseCreateForm: document.getElementById('courseCreateForm'),
+  newCourseSubjectInput: document.getElementById('newCourseSubjectInput'),
+  newCourseAssignInput: document.getElementById('newCourseAssignInput'),
+  btnCancelAddCourse: document.getElementById('btnCancelAddCourse'),
+  btnConfirmAddCourse: document.getElementById('btnConfirmAddCourse'),
+  modalActiveCourseLabel: document.getElementById('modalActiveCourseLabel'),
+
   studentsList: document.getElementById('studentsList'),
   totalStudentsCount: document.getElementById('totalStudentsCount'),
   studentFilterSelect: document.getElementById('studentFilterSelect'),
@@ -65,6 +100,21 @@ const elements = {
   btnOpenExternal: document.getElementById('btnOpenExternal'),
   noWebNotice: document.getElementById('noWebNotice'),
   btnSwitchToCode: document.getElementById('btnSwitchToCode'),
+
+  // Python & OOP Studio elements
+  pythonPreviewStudio: document.getElementById('pythonPreviewStudio'),
+  pyEntryFileSelect: document.getElementById('pyEntryFileSelect'),
+  btnRunPython: document.getElementById('btnRunPython'),
+  btnResetPythonCode: document.getElementById('btnResetPythonCode'),
+  pyExecStatus: document.getElementById('pyExecStatus'),
+  pyOopChipsBar: document.getElementById('pyOopChipsBar'),
+  pyEditorStats: document.getElementById('pyEditorStats'),
+  pyEditorLineNumbers: document.getElementById('pyEditorLineNumbers'),
+  pyCodeEditor: document.getElementById('pyCodeEditor'),
+  pyStdinInput: document.getElementById('pyStdinInput'),
+  pyInputDetectedBadge: document.getElementById('pyInputDetectedBadge'),
+  btnClearPyOutput: document.getElementById('btnClearPyOutput'),
+  pyOutputConsole: document.getElementById('pyOutputConsole'),
   
   fileTreeContent: document.getElementById('fileTreeContent'),
   btnCollapseAllTree: document.getElementById('btnCollapseAllTree'),
@@ -80,8 +130,16 @@ const elements = {
   btnOpenInputModal: document.getElementById('btnOpenInputModal'),
   btnCloseModal: document.getElementById('btnCloseModal'),
   btnCancelModal: document.getElementById('btnCancelModal'),
+  importModeTabs: document.querySelectorAll('.import-mode-tab'),
+  importPaneGithub: document.getElementById('importPaneGithub'),
+  importPaneUpload: document.getElementById('importPaneUpload'),
   bulkLinksTextarea: document.getElementById('bulkLinksTextarea'),
   parsedStatsLabel: document.getElementById('parsedStatsLabel'),
+  uploadDropZone: document.getElementById('uploadDropZone'),
+  studentFilesInput: document.getElementById('studentFilesInput'),
+  checkGroupSingleStudent: document.getElementById('checkGroupSingleStudent'),
+  singleStudentNameInput: document.getElementById('singleStudentNameInput'),
+  selectedFilesList: document.getElementById('selectedFilesList'),
   btnStartFetch: document.getElementById('btnStartFetch'),
   btnClearAllCache: document.getElementById('btnClearAllCache'),
   btnExportCsv: document.getElementById('btnExportCsv'),
@@ -91,6 +149,7 @@ const elements = {
 // Initialization
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+  initCoursesState();
   setupEventListeners();
   setupIframeMessageListener();
   setupKeyboardShortcuts();
@@ -98,7 +157,162 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCursorEffects();
 });
 
+// -------------------------------------------------------------
+// Multi-Course / Subject & Assignment Management
+// -------------------------------------------------------------
+function initCoursesState() {
+  renderCourseSelect();
+}
+
+function getActiveCourse() {
+  return state.courses.find(c => c.id === state.activeCourseId) || state.courses[0];
+}
+
+function syncActiveCourseState() {
+  const course = getActiveCourse();
+  if (!course) return;
+  course.students = state.students;
+  course.currentIndex = state.currentIndex;
+  if (elements.bulkLinksTextarea) {
+    course.bulkLinksText = elements.bulkLinksTextarea.value;
+  }
+}
+
+function renderCourseSelect() {
+  if (!elements.courseSelect) return;
+  elements.courseSelect.innerHTML = '';
+  state.courses.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    const count = c.id === state.activeCourseId ? state.students.length : (c.students ? c.students.length : 0);
+    opt.textContent = `${c.subject} — ${c.assignment} (${count})`;
+    if (c.id === state.activeCourseId) opt.selected = true;
+    elements.courseSelect.appendChild(opt);
+  });
+
+  const active = getActiveCourse();
+  if (elements.modalActiveCourseLabel && active) {
+    elements.modalActiveCourseLabel.textContent = `กำลังนำเข้าสู่วิชา: ${active.subject} (${active.assignment})`;
+  }
+}
+
+function switchCourse(courseId) {
+  if (courseId === state.activeCourseId) return;
+  syncActiveCourseState();
+
+  const target = state.courses.find(c => c.id === courseId);
+  if (!target) return;
+
+  state.activeCourseId = target.id;
+  state.students = target.students || [];
+  state.currentIndex = typeof target.currentIndex === 'number' ? target.currentIndex : -1;
+  if (elements.bulkLinksTextarea) {
+    elements.bulkLinksTextarea.value = target.bulkLinksText || '';
+    updateParsedStats();
+  }
+
+  renderCourseSelect();
+  renderStudentsList();
+  updateViewedStats();
+
+  if (state.students.length > 0 && state.currentIndex >= 0 && state.currentIndex < state.students.length) {
+    selectStudent(state.currentIndex);
+  } else if (state.students.length > 0) {
+    selectStudent(0);
+  } else {
+    state.currentIndex = -1;
+    elements.studentWorkspace.style.display = 'none';
+    if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'none';
+    if (elements.sidebarActiveMeta) elements.sidebarActiveMeta.style.display = 'none';
+    elements.blankState.style.display = 'flex';
+    if (elements.previewIframe) elements.previewIframe.src = 'about:blank';
+  }
+}
+
+function handleConfirmAddCourse() {
+  const subject = (elements.newCourseSubjectInput?.value || '').trim();
+  const assignment = (elements.newCourseAssignInput?.value || '').trim() || 'งานที่ 1';
+  if (!subject) {
+    alert('กรุณาระบุชื่อรายวิชา');
+    elements.newCourseSubjectInput?.focus();
+    return;
+  }
+
+  syncActiveCourseState();
+  const newId = `course-${Date.now()}`;
+  state.courses.push({
+    id: newId,
+    subject,
+    assignment,
+    students: [],
+    currentIndex: -1,
+    bulkLinksText: '',
+  });
+
+  if (elements.newCourseSubjectInput) elements.newCourseSubjectInput.value = '';
+  if (elements.newCourseAssignInput) elements.newCourseAssignInput.value = '';
+  if (elements.courseCreateForm) elements.courseCreateForm.style.display = 'none';
+
+  switchCourse(newId);
+}
+
+function handleDeleteActiveCourse() {
+  const active = getActiveCourse();
+  if (!active) return;
+
+  if (state.courses.length <= 1) {
+    if (!confirm(`ต้องการล้างรายชื่อนักเรียนในวิชา "${active.subject} — ${active.assignment}" หรือไม่?`)) return;
+    state.students = [];
+    state.currentIndex = -1;
+    active.students = [];
+    active.currentIndex = -1;
+    active.bulkLinksText = '';
+    if (elements.bulkLinksTextarea) elements.bulkLinksTextarea.value = '';
+    renderCourseSelect();
+    renderStudentsList();
+    updateViewedStats();
+    elements.studentWorkspace.style.display = 'none';
+    if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'none';
+    if (elements.sidebarActiveMeta) elements.sidebarActiveMeta.style.display = 'none';
+    elements.blankState.style.display = 'flex';
+    return;
+  }
+
+  if (!confirm(`ลบรายการวิชา "${active.subject} — ${active.assignment}" ออกจากหน้าตรวจงานหรือไม่?`)) return;
+  const idx = state.courses.findIndex(c => c.id === active.id);
+  if (idx >= 0) state.courses.splice(idx, 1);
+  const nextCourse = state.courses[0];
+  state.activeCourseId = '';
+  switchCourse(nextCourse.id);
+}
+
 function setupEventListeners() {
+  // Course switcher & creation
+  if (elements.courseSelect) {
+    elements.courseSelect.addEventListener('change', (e) => {
+      switchCourse(e.target.value);
+    });
+  }
+  if (elements.btnToggleAddCourse) {
+    elements.btnToggleAddCourse.addEventListener('click', () => {
+      if (!elements.courseCreateForm) return;
+      const isVisible = elements.courseCreateForm.style.display !== 'none';
+      elements.courseCreateForm.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) elements.newCourseSubjectInput?.focus();
+    });
+  }
+  if (elements.btnCancelAddCourse) {
+    elements.btnCancelAddCourse.addEventListener('click', () => {
+      if (elements.courseCreateForm) elements.courseCreateForm.style.display = 'none';
+    });
+  }
+  if (elements.btnConfirmAddCourse) {
+    elements.btnConfirmAddCourse.addEventListener('click', handleConfirmAddCourse);
+  }
+  if (elements.btnDeleteCourse) {
+    elements.btnDeleteCourse.addEventListener('click', handleDeleteActiveCourse);
+  }
+
   // Modal toggling
   elements.btnOpenInputModal.addEventListener('click', openModal);
   elements.btnCloseModal.addEventListener('click', closeModal);
@@ -107,11 +321,102 @@ function setupEventListeners() {
     if (e.target === elements.inputModal) closeModal();
   });
 
+  // Import Mode Tabs (GitHub Links vs Upload Files)
+  if (elements.importModeTabs) {
+    elements.importModeTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        switchImportMode(tab.dataset.importMode);
+      });
+    });
+  }
+
+  // Local File Upload listeners (.py, .ipynb, .zip, .html)
+  if (elements.studentFilesInput) {
+    elements.studentFilesInput.addEventListener('change', (e) => {
+      addPendingUploadFiles(Array.from(e.target.files || []));
+      e.target.value = '';
+    });
+  }
+  if (elements.uploadDropZone) {
+    elements.uploadDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      elements.uploadDropZone.classList.add('dragover');
+    });
+    elements.uploadDropZone.addEventListener('dragleave', () => {
+      elements.uploadDropZone.classList.remove('dragover');
+    });
+    elements.uploadDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      elements.uploadDropZone.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files) {
+        addPendingUploadFiles(Array.from(e.dataTransfer.files));
+      }
+    });
+  }
+  if (elements.checkGroupSingleStudent) {
+    elements.checkGroupSingleStudent.addEventListener('change', (e) => {
+      if (elements.singleStudentNameInput) {
+        elements.singleStudentNameInput.style.display = e.target.checked ? 'block' : 'none';
+      }
+    });
+  }
+
   // Textarea input monitoring
   elements.bulkLinksTextarea.addEventListener('input', updateParsedStats);
 
   // Start fetch
   elements.btnStartFetch.addEventListener('click', handleStartFetch);
+
+  // Python Studio listeners
+  if (elements.pyEntryFileSelect) {
+    elements.pyEntryFileSelect.addEventListener('change', (e) => {
+      const cur = getCurrentStudent();
+      if (cur && cur.python_info) {
+        selectPythonStudioFile(cur, e.target.value, false);
+      }
+    });
+  }
+  if (elements.btnRunPython) {
+    elements.btnRunPython.addEventListener('click', () => {
+      runPythonCodeInStudio(true);
+    });
+  }
+  if (elements.btnResetPythonCode) {
+    elements.btnResetPythonCode.addEventListener('click', () => {
+      resetCurrentPythonFileCode();
+    });
+  }
+  if (elements.pyCodeEditor) {
+    elements.pyCodeEditor.addEventListener('input', () => {
+      updatePyEditorLineNumbers();
+      if (elements.btnResetPythonCode) elements.btnResetPythonCode.style.display = 'inline-flex';
+    });
+    elements.pyCodeEditor.addEventListener('scroll', () => {
+      if (elements.pyEditorLineNumbers) {
+        elements.pyEditorLineNumbers.scrollTop = elements.pyCodeEditor.scrollTop;
+      }
+    });
+    elements.pyCodeEditor.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runPythonCodeInStudio(true);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = elements.pyCodeEditor.selectionStart;
+        const end = elements.pyCodeEditor.selectionEnd;
+        const val = elements.pyCodeEditor.value;
+        elements.pyCodeEditor.value = val.substring(0, start) + '    ' + val.substring(end);
+        elements.pyCodeEditor.selectionStart = elements.pyCodeEditor.selectionEnd = start + 4;
+      }
+    });
+  }
+  if (elements.btnClearPyOutput) {
+    elements.btnClearPyOutput.addEventListener('click', () => {
+      if (elements.pyOutputConsole) {
+        elements.pyOutputConsole.innerHTML = `<div class="py-output-placeholder">ล้างหน้าจอแล้ว — กดปุ่ม "▶ รันโค้ดดูผลลัพธ์" เพื่อรันใหม่</div>`;
+      }
+    });
+  }
 
   // Clear cache
   elements.btnClearAllCache.addEventListener('click', handleClearAllCache);
@@ -257,23 +562,31 @@ function setupKeyboardShortcuts() {
 // -------------------------------------------------------------
 function exportResultsToCsv() {
   if (!state.students || state.students.length === 0) {
-    alert('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้าลิงก์ก่อน');
+    alert('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้างานก่อน');
     return;
   }
 
-  const headers = ['ลำดับ', 'ชื่อนักเรียน', 'Repository (Owner/Repo)', 'ลิงก์ GitHub', 'สถานะเว็บ', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
+  const activeCourse = getActiveCourse();
+  const courseTitle = activeCourse ? `${activeCourse.subject} - ${activeCourse.assignment}` : 'ทั่วไป';
+
+  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / Repository', 'ลิงก์ GitHub', 'ประเภทโปรเจกต์', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
   const rows = state.students.map((s, index) => {
-    const hasWebText = s.meta?.has_web ? 'ใช่ (HTML)' : (s.status === 'ready' ? 'ไม่ใช่เว็บสถิต' : '-');
+    let projTypeText = '-';
+    if (s.meta?.has_web || s.has_web) projTypeText = 'เว็บสถิต (HTML)';
+    else if (s.meta?.has_python || s.has_python) projTypeText = 'Python / OOP';
+    else if (s.status === 'ready') projTypeText = 'โค้ดทั่วไป';
+
     const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
-    const commitSha = s.meta?.commit_sha ? s.meta.commit_sha.substring(0, 7) : '-';
+    const commitSha = s.meta?.commit_hash ? s.meta.commit_hash.substring(0, 7) : (s.meta?.commit_sha ? s.meta.commit_sha.substring(0, 7) : '-');
     const noteText = s.note || '';
 
     return [
       index + 1,
+      `"${courseTitle.replace(/"/g, '""')}"`,
       `"${(s.student_name || '').replace(/"/g, '""')}"`,
       `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : s.raw_input).replace(/"/g, '""')}"`,
       `"${(s.canonical_url || '').replace(/"/g, '""')}"`,
-      `"${hasWebText}"`,
+      `"${projTypeText}"`,
       `"${viewedText}"`,
       `"${noteText.replace(/"/g, '""')}"`,
       `"${commitSha}"`,
@@ -287,8 +600,9 @@ function exportResultsToCsv() {
   const link = document.createElement('a');
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
+  const safeCourseSlug = courseTitle.replace(/[^a-zA-Z0-9ก-๙_-]+/g, '_');
   link.setAttribute('href', url);
-  link.setAttribute('download', `repo-preview-report-${dateStr}.csv`);
+  link.setAttribute('download', `report-${safeCourseSlug}-${dateStr}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -407,19 +721,122 @@ function setupIframeMessageListener() {
 }
 
 // -------------------------------------------------------------
-// Modal & Link Parsing
+// Modal, Link Parsing & File Upload Import
 // -------------------------------------------------------------
 function openModal() {
   elements.inputModal.style.display = 'flex';
-  elements.bulkLinksTextarea.focus();
-  updateParsedStats();
+  if (state.importMode === 'upload') {
+    renderSelectedUploadFiles();
+  } else {
+    if (elements.bulkLinksTextarea) elements.bulkLinksTextarea.focus();
+    updateParsedStats();
+  }
 }
 
 function closeModal() {
   elements.inputModal.style.display = 'none';
 }
 
+function switchImportMode(mode) {
+  state.importMode = mode === 'upload' ? 'upload' : 'github';
+  if (elements.importTabGithub) {
+    elements.importTabGithub.classList.toggle('active', state.importMode === 'github');
+  }
+  if (elements.importTabUpload) {
+    elements.importTabUpload.classList.toggle('active', state.importMode === 'upload');
+  }
+  if (elements.importPaneGithub) {
+    elements.importPaneGithub.style.display = state.importMode === 'github' ? 'block' : 'none';
+  }
+  if (elements.importPaneUpload) {
+    elements.importPaneUpload.style.display = state.importMode === 'upload' ? 'block' : 'none';
+  }
+
+  if (state.importMode === 'upload') {
+    renderSelectedUploadFiles();
+  } else {
+    updateParsedStats();
+  }
+}
+
+function addPendingUploadFiles(files) {
+  const allowedExts = ['py', 'ipynb', 'zip', 'html', 'htm', 'css', 'js', 'txt', 'csv', 'json'];
+  files.forEach(file => {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!allowedExts.includes(ext)) return;
+    const exists = state.pendingUploadFiles.some(
+      f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified
+    );
+    if (!exists) {
+      state.pendingUploadFiles.push(file);
+    }
+  });
+  renderSelectedUploadFiles();
+}
+
+function renderSelectedUploadFiles() {
+  const listEl = elements.selectedFilesList;
+  if (!listEl) return;
+
+  if (state.importMode === 'upload' && elements.parsedStatsLabel) {
+    elements.parsedStatsLabel.innerText = `เลือกไฟล์พร้อมนำเข้า: ${state.pendingUploadFiles.length} ไฟล์`;
+  }
+
+  if (state.pendingUploadFiles.length === 0) {
+    listEl.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  listEl.style.display = 'flex';
+  listEl.innerHTML = '';
+
+  state.pendingUploadFiles.forEach((file, idx) => {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    let icon = '📄';
+    if (ext === 'py') icon = '🐍';
+    else if (ext === 'ipynb') icon = '📓';
+    else if (ext === 'zip') icon = '📦';
+    else if (ext === 'html' || ext === 'htm') icon = '🌐';
+
+    const chip = document.createElement('div');
+    chip.className = 'selected-file-chip';
+    chip.innerHTML = `
+      <span class="selected-file-info">
+        <span>${icon}</span>
+        <span class="selected-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+        <span class="selected-file-size">(${formatFileSize(file.size)})</span>
+      </span>
+      <button type="button" class="btn-remove-upload-file" title="เอาไฟล์นี้ออก">×</button>
+    `;
+    chip.querySelector('.btn-remove-upload-file').addEventListener('click', () => {
+      state.pendingUploadFiles.splice(idx, 1);
+      renderSelectedUploadFiles();
+    });
+    listEl.appendChild(chip);
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const commaIdx = result.indexOf(',');
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ ' + file.name));
+    reader.readAsDataURL(file);
+  });
+}
+
 function updateParsedStats() {
+  if (state.importMode === 'upload') {
+    if (elements.parsedStatsLabel) {
+      elements.parsedStatsLabel.innerText = `เลือกไฟล์พร้อมนำเข้า: ${state.pendingUploadFiles.length} ไฟล์`;
+    }
+    return;
+  }
   const text = elements.bulkLinksTextarea.value.trim();
   if (!text) {
     elements.parsedStatsLabel.innerText = 'ตรวจพบคัดกรอง: 0 รายการ';
@@ -430,9 +847,14 @@ function updateParsedStats() {
 }
 
 async function handleStartFetch() {
+  if (state.importMode === 'upload') {
+    await handleStartFileUpload();
+    return;
+  }
+
   const text = elements.bulkLinksTextarea.value.trim();
   if (!text) {
-    alert('กรุณาวางลิงก์อย่างน้อย 1 รายการ');
+    alert('กรุณาวางลิงก์อย่างน้อย 1 รายการ หรือสลับไปแท็บ "อัปโหลดไฟล์งาน"');
     return;
   }
 
@@ -456,13 +878,17 @@ async function handleStartFetch() {
       return;
     }
 
-    // รวมรายการเข้า state (อัปเดตหรือเพิ่มใหม่)
-    state.students = items.map(it => ({
+    // คงรายการที่อัปโหลดจากไฟล์ไว้ในวิชานี้ด้วย (ถ้ามี)
+    const uploadedStudents = state.students.filter(s => s.source_type === 'upload');
+    const githubStudents = items.map(it => ({
       ...it,
       console_logs: [],
       network_errors: [],
     }));
+    state.students = [...uploadedStudents, ...githubStudents];
 
+    syncActiveCourseState();
+    renderCourseSelect();
     closeModal();
     renderStudentsList();
     updateViewedStats();
@@ -474,7 +900,7 @@ async function handleStartFetch() {
     }
 
     // 3. เริ่ม Streaming ดาวน์โหลดสำหรับรายการที่ยังไม่ได้โหลด
-    startFetchStream(state.students);
+    startFetchStream(githubStudents);
 
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการประมวลผลลิงก์: ' + err.message);
@@ -484,8 +910,89 @@ async function handleStartFetch() {
   }
 }
 
+async function handleStartFileUpload() {
+  if (state.pendingUploadFiles.length === 0) {
+    alert('กรุณาเลือกไฟล์งานนักเรียนอย่างน้อย 1 ไฟล์ (.py, .ipynb, .zip, .html)');
+    return;
+  }
+
+  elements.btnStartFetch.disabled = true;
+  elements.btnStartFetch.innerText = 'กำลังอัปโหลดและวิเคราะห์โค้ด...';
+
+  try {
+    const encodedFiles = [];
+    for (const file of state.pendingUploadFiles) {
+      const b64 = await fileToBase64(file);
+      encodedFiles.push({
+        filename: file.name,
+        content_base64: b64,
+        student_name: null,
+      });
+    }
+
+    const groupSingle = !!(elements.checkGroupSingleStudent && elements.checkGroupSingleStudent.checked);
+    const res = await fetch('/api/repos/upload-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: encodedFiles,
+        group_as_single_student: groupSingle,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || 'อัปโหลดไฟล์ไม่สำเร็จ');
+    }
+
+    const data = await res.json();
+    const newItems = (data.items || []).map(it => ({
+      ...it,
+      console_logs: [],
+      network_errors: [],
+    }));
+
+    if (newItems.length === 0) {
+      alert('ไม่พบไฟล์ที่สามารถนำเข้าได้');
+      return;
+    }
+
+    // รวมเข้ากับรายการนักเรียนในรายวิชาปัจจุบัน (อัปเดตหากชื่อไฟล์ซ้ำ หรือเพิ่มต่อท้าย)
+    newItems.forEach(newItem => {
+      const existIdx = state.students.findIndex(s => s.key === newItem.key);
+      if (existIdx >= 0) {
+        state.students[existIdx] = newItem;
+      } else {
+        state.students.push(newItem);
+      }
+    });
+
+    state.pendingUploadFiles = [];
+    if (elements.studentFilesInput) elements.studentFilesInput.value = '';
+    renderSelectedUploadFiles();
+
+    syncActiveCourseState();
+    renderCourseSelect();
+    closeModal();
+    renderStudentsList();
+    updateViewedStats();
+
+    // เลือกเปิดดูงานคนที่เพิ่งอัปโหลดคนแรกทันที
+    const firstNewKey = newItems[0].key;
+    const targetIdx = state.students.findIndex(s => s.key === firstNewKey);
+    if (targetIdx >= 0) {
+      selectStudent(targetIdx);
+    }
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการอัปโหลดไฟล์: ' + err.message);
+  } finally {
+    elements.btnStartFetch.disabled = false;
+    elements.btnStartFetch.innerText = 'เริ่มโหลดและตรวจงาน';
+  }
+}
+
 async function startFetchStream(items) {
-  const toFetch = items.filter(it => it.status !== 'ready' && it.is_valid);
+  const toFetch = items.filter(it => it.status !== 'ready' && it.is_valid && it.source_type !== 'upload');
   if (toFetch.length === 0) return;
 
   // ตั้งสถานะเป็น loading ในรายการ
@@ -551,6 +1058,8 @@ function handleStreamEvent(event) {
         student.status = 'error';
         student.error_message = event.error_message || 'ดาวน์โหลดไม่สำเร็จ';
       }
+      syncActiveCourseState();
+      renderCourseSelect();
       updateStudentItemCard(student);
 
       // ถ้ายังไม่ได้เลือกใคร ให้เปิดดูคนแรกที่พร้อมทันที!
@@ -739,15 +1248,20 @@ async function selectStudent(index) {
 
   // Header Details
   elements.activeStudentName.innerText = student.student_name;
-  elements.activeRepoText.innerText = student.owner ? `${student.owner}/${student.repo}` : student.raw_input;
-  elements.activeRepoLink.href = student.canonical_url || '#';
+  const isUploaded = student.source_type === 'upload' || (student.canonical_url && student.canonical_url.startsWith('upload://'));
+  elements.activeRepoText.innerText = isUploaded ? (student.raw_input || student.repo) : (student.owner ? `${student.owner}/${student.repo}` : student.raw_input);
+  elements.activeRepoLink.href = isUploaded ? '#' : (student.canonical_url || '#');
+  elements.activeRepoLink.style.pointerEvents = isUploaded ? 'none' : 'auto';
+  if (elements.btnReloadCurrentRepo) {
+    elements.btnReloadCurrentRepo.style.display = isUploaded ? 'none' : 'inline-flex';
+  }
   elements.navCounterText.innerText = `${index + 1} / ${state.students.length}`;
   elements.checkViewed.checked = !!student.viewed;
   elements.studentNoteInput.value = student.note || '';
 
   // Badges
   const commit = student.meta && student.meta.commit_hash ? student.meta.commit_hash.substring(0, 7) : '-';
-  elements.commitBadge.innerText = `Commit: ${commit}`;
+  elements.commitBadge.innerText = isUploaded ? 'ไฟล์อัปโหลด' : `Commit: ${commit}`;
 
   // ถ้าสถานะยังเป็น Error ให้แสดงข้อมูลข้อผิดพลาด
   if (student.status === 'error') {
@@ -756,10 +1270,11 @@ async function selectStudent(index) {
     elements.noWebNotice.querySelector('p').innerText = student.error_message || 'พบข้อผิดพลาด';
     elements.btnSwitchToCode.style.display = 'none';
     elements.iframeContainer.style.display = 'none';
+    if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
     return;
   }
 
-  // โหลด Preview ผ่าน Lazy Port
+  // โหลด Preview (รองรับทั้ง HTML Web และ Python OOP Studio)
   loadPreviewForStudent(student);
 
   // โหลด File Tree สำหรับแท็บโค้ด
@@ -773,8 +1288,17 @@ async function loadPreviewForStudent(student) {
   if (!student.owner || !student.repo) return;
 
   try {
+    let data = null;
     const res = await fetch(`/api/preview/${student.owner}/${student.repo}`);
-    if (!res.ok) {
+    if (res.ok) {
+      data = await res.json();
+    } else if (student.local_bundle && student.local_bundle.preview) {
+      data = {
+        ...student.local_bundle.preview,
+        has_python: student.has_python,
+        python_info: student.python_info || student.local_bundle.python_info,
+      };
+    } else {
       const errData = await res.json().catch(() => ({}));
       elements.hasWebBadge.className = 'badge badge-warning';
       elements.hasWebBadge.innerText = 'โหลดไม่สำเร็จ';
@@ -783,52 +1307,649 @@ async function loadPreviewForStudent(student) {
       elements.noWebNotice.querySelector('p').innerText = errData.detail || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ GitHub';
       elements.btnSwitchToCode.style.display = 'none';
       elements.iframeContainer.style.display = 'none';
+      if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
       elements.previewIframe.src = 'about:blank';
       student.preview_url = null;
       return;
     }
 
-    const data = await res.json();
+    if (data.python_info) {
+      student.python_info = data.python_info;
+    } else if (student.local_bundle && student.local_bundle.python_info) {
+      student.python_info = student.local_bundle.python_info;
+    }
+    student.has_python = !!(data.has_python || (student.python_info && student.python_info.has_python));
 
-    if (!data.has_web) {
-      // ไม่มี index.html (ไม่ใช่เว็บสถิต)
-      student.has_web = false;
-      elements.hasWebBadge.className = 'badge badge-warning';
-      elements.hasWebBadge.innerText = 'ไม่ใช่เว็บสถิต';
-      elements.noWebNotice.style.display = 'flex';
-      elements.noWebNotice.querySelector('h3').innerText = 'ไม่ใช่เว็บสถิต ดูได้เฉพาะโค้ด';
-      elements.noWebNotice.querySelector('p').innerText = 'Repository นี้ไม่มีไฟล์ index.html (อาจเป็นโปรเจกต์ภาษาอื่น) สามารถตรวจดูไฟล์ในแท็บ "โค้ด" ได้ตามปกติ';
-      elements.btnSwitchToCode.style.display = 'inline-flex';
-      elements.iframeContainer.style.display = 'none';
-      elements.previewIframe.src = 'about:blank';
-      student.preview_url = null;
-    } else {
-      // มี index.html เสิร์ฟสำเร็จ
+    const deviceSwitcherEl = document.querySelector('.device-switcher');
+
+    if (data.has_web && data.url) {
+      // 1. มี index.html เสิร์ฟเป็นเว็บสถิต
       student.has_web = true;
       student.preview_url = data.url;
       elements.hasWebBadge.className = 'badge badge-success';
       elements.hasWebBadge.innerText = data.is_subfolder ? `เว็บสถิต (${data.index_rel})` : 'เว็บสถิต (HTML)';
       elements.noWebNotice.style.display = 'none';
+      if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
+      if (deviceSwitcherEl) deviceSwitcherEl.style.display = 'flex';
+      if (elements.btnOpenNewTab) elements.btnOpenNewTab.style.display = 'inline-flex';
       elements.iframeContainer.style.display = 'flex';
       elements.previewIframe.src = data.url;
+    } else if (student.has_python && student.python_info && (student.python_info.files || []).length > 0) {
+      // 2. โปรเจกต์ Python / OOP — เปิดโหมด Python & OOP Output Preview Studio
+      student.has_web = false;
+      student.preview_url = null;
+      elements.previewIframe.src = 'about:blank';
+      elements.iframeContainer.style.display = 'none';
+      elements.noWebNotice.style.display = 'none';
+      if (deviceSwitcherEl) deviceSwitcherEl.style.display = 'none';
+      if (elements.btnOpenNewTab) elements.btnOpenNewTab.style.display = 'none';
+
+      const oopSum = student.python_info.oop_summary || {};
+      elements.hasWebBadge.className = 'badge badge-python';
+      if (oopSum.total_classes > 0) {
+        elements.hasWebBadge.innerText = `🐍 Python OOP (${oopSum.total_classes} คลาส)`;
+      } else {
+        elements.hasWebBadge.innerText = `🐍 Python (${student.python_info.total_python_files || 1} ไฟล์)`;
+      }
+
+      if (elements.pythonPreviewStudio) {
+        elements.pythonPreviewStudio.style.display = 'flex';
+        setupPythonStudioForStudent(student, student.python_info);
+      }
+    } else {
+      // 3. ไม่มีทั้ง index.html และไฟล์ Python
+      student.has_web = false;
+      elements.hasWebBadge.className = 'badge badge-warning';
+      elements.hasWebBadge.innerText = 'ดูได้เฉพาะโค้ด';
+      elements.noWebNotice.style.display = 'flex';
+      elements.noWebNotice.querySelector('h3').innerText = 'ไม่พบหน้าเว็บ index.html หรือไฟล์ Python';
+      elements.noWebNotice.querySelector('p').innerText = 'สามารถตรวจดูไฟล์ทั้งหมดในแท็บ "โค้ด" ได้ตามปกติ';
+      elements.btnSwitchToCode.style.display = 'inline-flex';
+      elements.iframeContainer.style.display = 'none';
+      if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
+      elements.previewIframe.src = 'about:blank';
+      student.preview_url = null;
     }
+
+    syncActiveCourseState();
   } catch (err) {
     console.error('Error getting preview:', err);
   }
 }
 
+// -------------------------------------------------------------
+// Python & OOP Output Preview Studio (In-Browser Pyodide Runner)
+// -------------------------------------------------------------
+function setupPythonStudioForStudent(student, pythonInfo) {
+  state.pyCurrentStudentKey = student.key;
+  state.pyFilesMap = {};
+
+  const files = pythonInfo.files || [];
+  files.forEach(f => {
+    state.pyFilesMap[f.path] = f;
+  });
+
+  if (elements.pyEntryFileSelect) {
+    elements.pyEntryFileSelect.innerHTML = '';
+    files.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.path;
+      const icon = f.extension === 'ipynb' ? '📓' : '🐍';
+      const classes = (f.analysis && f.analysis.classes) || [];
+      const classHint = classes.length > 0 ? ` — [Class: ${classes.map(c => c.name).join(', ')}]` : '';
+      opt.textContent = `${icon} ${f.path}${classHint}`;
+      elements.pyEntryFileSelect.appendChild(opt);
+    });
+  }
+
+  const defaultEntry = pythonInfo.entry_file || (files[0] && files[0].path);
+  if (defaultEntry) {
+    if (elements.pyEntryFileSelect) elements.pyEntryFileSelect.value = defaultEntry;
+    selectPythonStudioFile(student, defaultEntry, true);
+  }
+}
+
+function selectPythonStudioFile(student, filePath, isAutoInit = false) {
+  const fileObj = state.pyFilesMap[filePath];
+  if (!fileObj) return;
+
+  state.pyCurrentFilePath = filePath;
+  state.pyOriginalCode = fileObj.content || '';
+
+  if (elements.pyCodeEditor) {
+    elements.pyCodeEditor.value = state.pyOriginalCode;
+    updatePyEditorLineNumbers();
+  }
+
+  const analysis = fileObj.analysis || {};
+  const oopSummary = (student.python_info && student.python_info.oop_summary) || {};
+  renderPythonOopChips(analysis, oopSummary);
+
+  // แจ้งเตือนหากโค้ดมีการเรียกใช้ input()
+  if (elements.pyInputDetectedBadge) {
+    elements.pyInputDetectedBadge.style.display = analysis.uses_input ? 'inline-block' : 'none';
+  }
+  if (elements.pyStdinInput) {
+    if (analysis.uses_input && analysis.input_prompts && analysis.input_prompts.length > 0) {
+      elements.pyStdinInput.placeholder = `ตรวจพบ input(${analysis.input_prompts.map(p => `"${p}"`).join(', ')}) — พิมพ์ค่าที่จะป้อนให้โปรแกรมทีละบรรทัดที่นี่ หรือกด "รันโค้ด" เพื่อป้อนผ่านป๊อปอัป`;
+    } else {
+      elements.pyStdinInput.placeholder = 'หากโค้ดมีคำสั่ง input() ให้พิมพ์ค่าที่จะป้อนทีละบรรทัดที่นี่ (หรือเว้นว่างไว้เพื่อป้อนผ่านกล่องโต้ตอบตอนกดรัน)...';
+    }
+  }
+
+  // หากมี SyntaxError แสดงทันทีใน Console
+  if (analysis.syntax_valid === false && analysis.syntax_error) {
+    const err = analysis.syntax_error;
+    if (elements.pyExecStatus) {
+      elements.pyExecStatus.className = 'py-exec-status status-error';
+      elements.pyExecStatus.innerText = `SyntaxError บรรทัด ${err.lineno || '?'}`;
+    }
+    if (elements.pyOutputConsole) {
+      elements.pyOutputConsole.innerHTML = `
+        <div class="py-console-error-box">
+          <div class="py-console-error-title">❌ พบข้อผิดพลาดทางไวยากรณ์ (SyntaxError) ในไฟล์ ${escapeHtml(filePath)}</div>
+          <pre class="py-console-pre error-text">บรรทัดที่ ${err.lineno || '?'}: ${escapeHtml(err.message || '')}\n${escapeHtml(err.text || '')}</pre>
+          <div class="py-console-hint">💡 ครูสามารถทดลองแก้โค้ดในช่องด้านซ้ายแล้วกด <strong>"รันโค้ด (Run)"</strong> เพื่อทดสอบผลลัพธ์ได้ทันที</div>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  // กรณีไฟล์มีคำสั่ง input() และยังไม่ได้พิมพ์ค่าในช่อง Stdin ตอนเปิดครั้งแรก ให้แสดงคำแนะนำพร้อมปุ่มกดรันโต้ตอบ
+  const hasStdinText = elements.pyStdinInput && elements.pyStdinInput.value.trim().length > 0;
+  if (isAutoInit && analysis.uses_input && !hasStdinText) {
+    if (elements.pyExecStatus) {
+      elements.pyExecStatus.className = 'py-exec-status status-waiting';
+      elements.pyExecStatus.innerText = 'รอค่า input() จากผู้ตรวจ';
+    }
+    const promptsHtml = (analysis.input_prompts || []).length > 0
+      ? `<div style="margin-top:6px; color: var(--text-secondary);">ข้อความถามค่าในโค้ด: ${analysis.input_prompts.map(p => `<code>input("${escapeHtml(p)}")</code>`).join(', ')}</div>`
+      : '';
+
+    let savedNotebookHtml = '';
+    if (fileObj.is_notebook && fileObj.notebook_info && (fileObj.notebook_info.saved_outputs || []).length > 0) {
+      savedNotebookHtml = renderSavedNotebookOutputsHtml(fileObj.notebook_info.saved_outputs);
+    }
+
+    if (elements.pyOutputConsole) {
+      elements.pyOutputConsole.innerHTML = `
+        <div class="py-input-notice-card">
+          <div class="py-input-notice-title">⌨️ โค้ดของนักเรียนมีการรับค่าด้วยคำสั่ง <code>input()</code> (${analysis.input_count || 1} จุด)</div>
+          <p>คุณครูสามารถเลือกวิธีทดสอบรันโค้ดได้ 2 แบบ:</p>
+          <ol>
+            <li>พิมพ์ค่าทดสอบเตรียมไว้ในช่อง <strong>"ค่าป้อนเข้า input() (Stdin)"</strong> ด้านบน (1 บรรทัดต่อ 1 input) แล้วกดปุ่มรัน</li>
+            <li>หรือกดปุ่มด้านล่างเพื่อรันและป้อนค่าทีละคำถามผ่านหน้าต่างป๊อปอัปได้ทันที</li>
+          </ol>
+          ${promptsHtml}
+          <div style="margin-top: 12px;">
+            <button type="button" class="btn btn-primary btn-sm" id="btnRunInteractiveNow">
+              ▶️ รันโค้ดและป้อนค่า input() ทันที
+            </button>
+          </div>
+        </div>
+        ${savedNotebookHtml}
+      `;
+      const btnNow = document.getElementById('btnRunInteractiveNow');
+      if (btnNow) {
+        btnNow.addEventListener('click', () => runPythonCodeInStudio(true));
+      }
+    }
+    return;
+  }
+
+  // รันโค้ดอัตโนมัติทันทีเพื่อพรีวิวผลลัพธ์!
+  runPythonCodeInStudio(false);
+}
+
+function updatePyEditorLineNumbers() {
+  if (!elements.pyCodeEditor || !elements.pyEditorLineNumbers) return;
+  const lineCount = (elements.pyCodeEditor.value || '').split('\n').length;
+  const nums = [];
+  for (let i = 1; i <= lineCount; i++) {
+    nums.push(i);
+  }
+  elements.pyEditorLineNumbers.innerText = nums.join('\n');
+}
+
+function renderPythonOopChips(analysis, oopSummary) {
+  if (!elements.pyOopChipsBar) return;
+  const classes = (analysis && analysis.classes) || [];
+  const functions = (analysis && analysis.functions) || [];
+  const chips = [];
+
+  if (classes.length === 0 && (!oopSummary || !oopSummary.total_classes)) {
+    chips.push(`<span class="oop-chip oop-chip-neutral">📄 สคริปต์ Python ทั่วไป (ไม่มีการประกาศ Class)</span>`);
+  } else {
+    classes.forEach(cls => {
+      const baseText = cls.bases && cls.bases.length > 0 ? ` <span class="oop-chip-sub">(สืบทอด: ${escapeHtml(cls.bases.join(', '))})</span>` : '';
+      chips.push(`<span class="oop-chip oop-chip-class" title="ประกาศที่บรรทัด ${cls.lineno}">🏛️ class <strong>${escapeHtml(cls.name)}</strong>${baseText}</span>`);
+
+      if (cls.attributes && cls.attributes.length > 0) {
+        chips.push(`<span class="oop-chip oop-chip-attr" title="Instance Attributes (self.xxx)">🔹 self.${cls.attributes.map(a => escapeHtml(a)).join(', self.')}</span>`);
+      }
+
+      if (cls.methods && cls.methods.length > 0) {
+        const methodNames = cls.methods.map(m => `${escapeHtml(m.name)}()`).join(', ');
+        chips.push(`<span class="oop-chip oop-chip-method" title="Methods ในคลาส ${escapeHtml(cls.name)}">⚙️ ${methodNames}</span>`);
+      }
+    });
+  }
+
+  if (functions.length > 0) {
+    chips.push(`<span class="oop-chip oop-chip-func">🔧 ฟังก์ชัน: ${functions.map(f => `${escapeHtml(f.name)}()`).join(', ')}</span>`);
+  }
+
+  if (analysis && analysis.syntax_valid === false && analysis.syntax_error) {
+    chips.push(`<span class="oop-chip oop-chip-error">❌ SyntaxError บรรทัด ${analysis.syntax_error.lineno || '?'}</span>`);
+  }
+
+  elements.pyOopChipsBar.innerHTML = chips.join('');
+}
+
+async function loadPyodideRuntime() {
+  if (state.pyodideInstance) return state.pyodideInstance;
+  if (state.pyodideLoadingPromise) return state.pyodideLoadingPromise;
+
+  state.pyodideLoadingPromise = (async () => {
+    if (typeof window.loadPyodide !== 'function') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js';
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('ไม่สามารถโหลดเอนจิน Python (Pyodide) จาก CDN ได้'));
+        document.head.appendChild(script);
+      });
+    }
+    const pyodide = await window.loadPyodide({
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
+    });
+    state.pyodideInstance = pyodide;
+    return pyodide;
+  })();
+
+  try {
+    return await state.pyodideLoadingPromise;
+  } catch (err) {
+    state.pyodideLoadingPromise = null;
+    throw err;
+  }
+}
+
+async function runPythonCodeInStudio(allowInteractivePrompt = false) {
+  const student = getCurrentStudent();
+  if (!student || !elements.pyCodeEditor || !elements.pyOutputConsole) return;
+
+  const codeToRun = elements.pyCodeEditor.value || '';
+  const currentFilePath = state.pyCurrentFilePath || 'main.py';
+  const fileObj = state.pyFilesMap[currentFilePath] || {};
+  const stdinRaw = elements.pyStdinInput ? elements.pyStdinInput.value : '';
+
+  if (elements.btnRunPython) elements.btnRunPython.disabled = true;
+  if (elements.pyExecStatus) {
+    elements.pyExecStatus.className = 'py-exec-status status-running';
+    elements.pyExecStatus.innerText = state.pyodideInstance ? 'กำลังรันโค้ด...' : 'กำลังเตรียมเอนจิน Python ครั้งแรก...';
+  }
+  elements.pyOutputConsole.innerHTML = `
+    <div class="py-console-loading">
+      <div class="spinner-sm"></div>
+      <span>${state.pyodideInstance ? 'กำลังประมวลผลโค้ด Python และตรวจสอบอ็อบเจกต์ OOP...' : 'กำลังโหลดเอนจิน Python (Pyodide WebAssembly) ครั้งแรก (ใช้เวลาประมาณ 2-3 วินาที)...'}</span>
+    </div>
+  `;
+
+  try {
+    // 1. วิเคราะห์ AST ล่าสุดจากโค้ดใน Editor (เผื่อครูแก้ไขโค้ดทดลอง)
+    try {
+      const astRes = await fetch('/api/python/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: codeToRun, filename: currentFilePath }),
+      });
+      if (astRes.ok) {
+        const astData = await astRes.json();
+        renderPythonOopChips(astData, student.python_info ? student.python_info.oop_summary : {});
+      }
+    } catch (_) {
+      // ไม่บังคับหากออฟไลน์
+    }
+
+    // 2. โหลด Pyodide Runtime
+    const pyodide = await loadPyodideRuntime();
+
+    // 3. จำลองไฟล์ทั้งหมดของโปรเจกต์ลงใน Virtual FileSystem ของ Pyodide (/home/pyodide/workspace)
+    // เพื่อให้นักเรียนที่แยกคลาสไว้คนละไฟล์ (เช่น from student import Student) สามารถ import ข้ามไฟล์ได้จริง!
+    const supportFiles = (student.python_info && student.python_info.support_files) || {};
+    const workspaceFiles = { ...supportFiles, [currentFilePath]: codeToRun };
+
+    window.__pyWorkspaceFiles = workspaceFiles;
+    window.__pyEntryPath = currentFilePath;
+    window.__pyUserCode = codeToRun;
+    window.__pyStdinText = stdinRaw;
+    window.__pyAllowInteractive = !!allowInteractivePrompt;
+    window.__pyPromptInput = (promptMsg) => {
+      const ans = window.prompt(promptMsg ? `${promptMsg}` : 'ป้อนค่า input() สำหรับโปรแกรม Python:', '');
+      return ans === null ? '' : String(ans);
+    };
+
+    const rawResultJson = await pyodide.runPythonAsync(`
+import sys, io, os, json, traceback, builtins, inspect
+import js
+
+workspace_root = "/home/pyodide/workspace"
+os.makedirs(workspace_root, exist_ok=True)
+
+# เขียนไฟล์ทั้งหมดในโปรเจกต์ของนักเรียนลงใน workspace
+files_dict = js.window.__pyWorkspaceFiles.to_py()
+for rel_path, content in files_dict.items():
+    full_path = os.path.join(workspace_root, rel_path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "w", encoding="utf-8") as f:
+        f.write(str(content))
+
+entry_rel = str(js.window.__pyEntryPath)
+entry_full = os.path.join(workspace_root, entry_rel)
+entry_dir = os.path.dirname(entry_full) or workspace_root
+os.chdir(entry_dir)
+
+for p in [workspace_root, entry_dir]:
+    if p in sys.path:
+        sys.path.remove(p)
+    sys.path.insert(0, p)
+
+# ล้างโมดูลที่เคยถูก import จากโปรเจกต์ก่อนหน้า
+for mod_name, mod_obj in list(sys.modules.items()):
+    mod_file = getattr(mod_obj, "__file__", "") or ""
+    if mod_file.startswith(workspace_root):
+        del sys.modules[mod_name]
+
+stdout_buf = io.StringIO()
+stderr_buf = io.StringIO()
+old_stdout, old_stderr = sys.stdout, sys.stderr
+old_input = builtins.input
+
+stdin_raw = str(js.window.__pyStdinText or "")
+stdin_lines = stdin_raw.splitlines() if stdin_raw.strip() != "" else []
+stdin_idx = 0
+allow_interactive = bool(js.window.__pyAllowInteractive)
+
+def custom_input(prompt=""):
+    global stdin_idx
+    prompt_str = str(prompt) if prompt is not None else ""
+    if stdin_idx < len(stdin_lines):
+        val = stdin_lines[stdin_idx]
+        stdin_idx += 1
+        print(f"{prompt_str}{val}")
+        return val
+    if allow_interactive:
+        val = str(js.window.__pyPromptInput(prompt_str))
+        print(f"{prompt_str}{val}")
+        return val
+    raise EOFError(f'โค้ดต้องการรับค่า input("{prompt_str}") เพิ่มเติม — กรุณาพิมพ์ค่าในช่อง Stdin ด้านบน หรือกดปุ่ม "รันโค้ด (Run)" เพื่อป้อนค่าผ่านป๊อปอัป')
+
+sys.stdout = stdout_buf
+sys.stderr = stderr_buf
+builtins.input = custom_input
+
+exec_globals = {"__name__": "__main__", "__file__": entry_full}
+user_code = str(js.window.__pyUserCode)
+exec_success = True
+error_text = ""
+
+try:
+    compiled = compile(user_code, entry_rel, "exec")
+    exec(compiled, exec_globals)
+except Exception as e:
+    exec_success = False
+    tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+    # กรองเฉพาะเฟรมของโค้ดนักเรียนเพื่อให้ครูอ่านง่าย
+    filtered_tb = [line for line in tb_lines if "pyodide" not in line or entry_rel in line]
+    error_text = "".join(filtered_tb if len(filtered_tb) > 1 else tb_lines)
+finally:
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+    builtins.input = old_input
+
+# สำรวจ Class และ Object Instances ที่ถูกสร้างขึ้นหลังรันโค้ดเสร็จ (สำหรับตรวจงานวิชา OOP)
+defined_classes = []
+created_objects = []
+
+for var_name, val in list(exec_globals.items()):
+    if var_name.startswith("__"):
+        continue
+    if inspect.isclass(val):
+        mod_name = getattr(val, "__module__", "")
+        if mod_name == "__main__" or mod_name in files_dict or any(rel.startswith(mod_name) for rel in files_dict):
+            bases = [b.__name__ for b in val.__bases__ if b.__name__ != "object"]
+            methods = [m for m, member in inspect.getmembers(val, predicate=inspect.isfunction) if not m.startswith("__") or m in ("__init__", "__str__", "__repr__")]
+            defined_classes.append({
+                "name": val.__name__,
+                "bases": bases,
+                "methods": methods,
+            })
+
+def inspect_single_instance(label, obj):
+    cls = type(obj)
+    cls_mod = getattr(cls, "__module__", "")
+    if cls_mod in ("builtins", "types", "io", "sys", "os"):
+        return None
+    if not (cls_mod == "__main__" or hasattr(obj, "__dict__")):
+        return None
+    attrs = {}
+    if hasattr(obj, "__dict__"):
+        for k, v in obj.__dict__.items():
+            try:
+                attrs[str(k)] = repr(v)[:140]
+            except Exception:
+                attrs[str(k)] = "<ไม่สามารถแปลงค่าได้>"
+    try:
+        str_val = str(obj)[:180]
+    except Exception:
+        str_val = f"<{cls.__name__} object>"
+    bases = [b.__name__ for b in cls.__bases__ if b.__name__ != "object"]
+    return {
+        "var_name": label,
+        "class_name": cls.__name__,
+        "bases": bases,
+        "str_value": str_val,
+        "attributes": attrs,
+    }
+
+for var_name, val in list(exec_globals.items()):
+    if var_name.startswith("_") or inspect.isclass(val) or inspect.ismodule(val) or inspect.isfunction(val):
+        continue
+    inst_info = inspect_single_instance(var_name, val)
+    if inst_info:
+        created_objects.append(inst_info)
+    elif isinstance(val, (list, tuple)):
+        for idx, elem in enumerate(val[:12]):
+            sub_info = inspect_single_instance(f"{var_name}[{idx}]", elem)
+            if sub_info:
+                created_objects.append(sub_info)
+
+json.dumps({
+    "success": exec_success,
+    "stdout": stdout_buf.getvalue(),
+    "stderr": stderr_buf.getvalue(),
+    "error": error_text,
+    "defined_classes": defined_classes,
+    "created_objects": created_objects[:24],
+})
+    `);
+
+    const execResult = JSON.parse(rawResultJson);
+    renderPythonExecutionOutput(execResult, fileObj);
+  } catch (err) {
+    if (elements.pyExecStatus) {
+      elements.pyExecStatus.className = 'py-exec-status status-error';
+      elements.pyExecStatus.innerText = 'รันไม่สำเร็จ';
+    }
+    let fallbackHtml = `
+      <div class="py-console-error-box">
+        <div class="py-console-error-title">⚠️ ไม่สามารถรันโค้ดในเบราว์เซอร์ได้: ${escapeHtml(err.message || String(err))}</div>
+      </div>
+    `;
+    if (fileObj.is_notebook && fileObj.notebook_info && (fileObj.notebook_info.saved_outputs || []).length > 0) {
+      fallbackHtml += renderSavedNotebookOutputsHtml(fileObj.notebook_info.saved_outputs);
+    }
+    elements.pyOutputConsole.innerHTML = fallbackHtml;
+  } finally {
+    if (elements.btnRunPython) elements.btnRunPython.disabled = false;
+  }
+}
+
+function renderPythonExecutionOutput(result, fileObj) {
+  if (!elements.pyOutputConsole) return;
+
+  if (elements.pyExecStatus) {
+    if (result.success) {
+      elements.pyExecStatus.className = 'py-exec-status status-ok';
+      elements.pyExecStatus.innerText = '✓ รันสำเร็จ';
+    } else {
+      elements.pyExecStatus.className = 'py-exec-status status-error';
+      elements.pyExecStatus.innerText = 'พบ Runtime Error';
+    }
+  }
+
+  const parts = [];
+
+  // 1. แสดงผลลัพธ์จาก print() / Standard Output
+  const hasStdout = result.stdout && result.stdout.length > 0;
+  parts.push(`
+    <div class="py-output-section">
+      <div class="py-output-section-header">
+        <span>🖥️ ผลลัพธ์การทำงาน (Standard Output / print)</span>
+      </div>
+      ${
+        hasStdout
+          ? `<pre class="py-console-pre">${escapeHtml(result.stdout)}</pre>`
+          : `<div class="py-console-empty-msg">ไม่มีข้อความที่ถูกสั่งพิมพ์ผ่าน <code>print()</code></div>`
+      }
+    </div>
+  `);
+
+  // 2. หากมี Error หรือ Warning
+  if (result.stderr && result.stderr.trim()) {
+    parts.push(`
+      <div class="py-output-section">
+        <div class="py-output-section-header" style="color: #fbbf24;">⚠️ Standard Error</div>
+        <pre class="py-console-pre warn-text">${escapeHtml(result.stderr)}</pre>
+      </div>
+    `);
+  }
+
+  if (!result.success && result.error) {
+    const isInputEof = result.error.includes('EOFError');
+    parts.push(`
+      <div class="py-console-error-box">
+        <div class="py-console-error-title">${isInputEof ? '⌨️ โปรแกรมต้องการค่า input() เพิ่มเติม' : '❌ ข้อผิดพลาดขณะรันโปรแกรม (Exception / Traceback)'}</div>
+        <pre class="py-console-pre error-text">${escapeHtml(result.error)}</pre>
+        ${
+          isInputEof
+            ? `<button type="button" class="btn btn-primary btn-sm" id="btnRetryInteractiveInput" style="margin-top:8px;">▶️ คลิกเพื่อรันใหม่และป้อนค่าผ่านป๊อปอัป</button>`
+            : ''
+        }
+      </div>
+    `);
+  }
+
+  // 3. ตารางตรวจสอบอ็อบเจกต์ OOP ที่ถูกสร้างขึ้นในหน่วยความจำ (OOP Object Instance Inspector)
+  const objects = result.created_objects || [];
+  if (objects.length > 0) {
+    const objCards = objects.map(obj => {
+      const attrEntries = Object.entries(obj.attributes || {});
+      const attrsHtml = attrEntries.length > 0
+        ? `<div class="py-obj-attrs-grid">
+            ${attrEntries.map(([k, v]) => `
+              <div class="py-obj-attr-item">
+                <span class="py-obj-attr-key">self.${escapeHtml(k)}</span>
+                <span class="py-obj-attr-val">${escapeHtml(v)}</span>
+              </div>
+            `).join('')}
+          </div>`
+        : `<div class="py-obj-no-attrs">ไม่มี Instance Attributes (<code>self.__dict__</code> ว่าง)</div>`;
+
+      const baseBadge = obj.bases && obj.bases.length > 0
+        ? `<span class="py-obj-base-badge">สืบทอดจาก ${escapeHtml(obj.bases.join(', '))}</span>`
+        : '';
+
+      return `
+        <div class="py-obj-card">
+          <div class="py-obj-card-head">
+            <div>
+              <span class="py-obj-var">${escapeHtml(obj.var_name)}</span>
+              <span class="py-obj-arrow">:</span>
+              <span class="py-obj-class">${escapeHtml(obj.class_name)}</span>
+            </div>
+            ${baseBadge}
+          </div>
+          ${attrsHtml}
+        </div>
+      `;
+    }).join('');
+
+    parts.push(`
+      <div class="py-output-section">
+        <div class="py-output-section-header">
+          <span>🧬 อ็อบเจกต์ OOP ที่ถูกสร้างหลังรันโค้ด (${objects.length} อ็อบเจกต์)</span>
+        </div>
+        <div class="py-obj-inspector-list">
+          ${objCards}
+        </div>
+      </div>
+    `);
+  }
+
+  // 4. หากเป็นไฟล์ Jupyter Notebook (.ipynb) ที่มีผลลัพธ์บันทึกติดมากับไฟล์ ให้แสดงเปรียบเทียบด้วย
+  if (fileObj && fileObj.is_notebook && fileObj.notebook_info && (fileObj.notebook_info.saved_outputs || []).length > 0) {
+    parts.push(renderSavedNotebookOutputsHtml(fileObj.notebook_info.saved_outputs));
+  }
+
+  elements.pyOutputConsole.innerHTML = parts.join('');
+
+  const btnRetry = document.getElementById('btnRetryInteractiveInput');
+  if (btnRetry) {
+    btnRetry.addEventListener('click', () => runPythonCodeInStudio(true));
+  }
+}
+
+function renderSavedNotebookOutputsHtml(savedOutputs) {
+  const items = savedOutputs.map(item => `
+    <div class="py-nb-saved-item">
+      <div class="py-nb-cell-label">Cell [${item.cell_index}]:</div>
+      <pre class="py-console-pre">${escapeHtml(item.output)}</pre>
+    </div>
+  `).join('');
+
+  return `
+    <div class="py-output-section">
+      <div class="py-output-section-header">
+        <span>📓 ผลลัพธ์ที่บันทึกติดมากับไฟล์ Jupyter Notebook (.ipynb)</span>
+      </div>
+      ${items}
+    </div>
+  `;
+}
+
 async function loadFileTreeForStudent(student) {
   if (!student.owner || !student.repo) return;
   try {
+    let treeData = [];
     const res = await fetch(`/api/files/tree/${student.owner}/${student.repo}`);
-    const data = await res.json();
-    state.fileTree = data.tree || [];
+    if (res.ok) {
+      const data = await res.json();
+      treeData = data.tree || [];
+    } else if (student.local_bundle && student.local_bundle.tree) {
+      treeData = student.local_bundle.tree;
+    }
+
+    state.fileTree = treeData;
     renderFileTree(state.fileTree);
 
-    // เปิด index.html อัตโนมัติเป็นไฟล์แรกถ้ามี
-    const firstHtml = findFirstTextFile(state.fileTree);
-    if (firstHtml) {
-      openFileContent(student.owner, student.repo, firstHtml.path);
+    // เปิด index.html หรือไฟล์โค้ดแรกอัตโนมัติ
+    const firstText = findFirstTextFile(state.fileTree);
+    if (firstText) {
+      openFileContent(student.owner, student.repo, firstText.path);
     } else {
       elements.codeContentWrap.innerHTML = `<div class="code-placeholder">เลือกไฟล์จากรายการด้านซ้ายเพื่อเปิดดูเนื้อหา</div>`;
       elements.activeFilePath.innerText = 'ยังไม่ได้เลือกไฟล์';
@@ -842,13 +1963,22 @@ async function loadFileTreeForStudent(student) {
 async function loadInspectForStudent(student) {
   if (!student.owner || !student.repo) return;
   try {
+    let data = null;
     const res = await fetch(`/api/inspect/${student.owner}/${student.repo}`);
-    const data = await res.json();
-    state.inspectData = data;
-    student.observations = data.observations || [];
-    updateObservationsBadge(student);
-    if (state.activeTab === 'inspect') {
-      renderInspectTab(student);
+    if (res.ok) {
+      data = await res.json();
+    } else if (student.local_bundle && student.local_bundle.inspect) {
+      data = student.local_bundle.inspect;
+    }
+
+    if (data) {
+      state.inspectData = data;
+      student.observations = data.observations || [];
+      if (data.python_info) student.python_info = data.python_info;
+      updateObservationsBadge(student);
+      if (state.activeTab === 'inspect') {
+        renderInspectTab(student);
+      }
     }
   } catch (err) {
     console.error('Error loading inspect data:', err);
@@ -856,7 +1986,7 @@ async function loadInspectForStudent(student) {
 }
 
 function updateObservationsBadge(student) {
-  const missingCount = (student.observations || []).filter(o => o.category === 'missing_file').length;
+  const missingCount = (student.observations || []).filter(o => o.category === 'missing_file' || o.category === 'python_syntax').length;
   const consoleErrCount = (student.console_logs || []).filter(l => l.type === 'error').length;
   const netErrCount = (student.network_errors || []).length;
   const totalIssues = missingCount + consoleErrCount + netErrCount;
@@ -905,12 +2035,15 @@ async function handleViewedToggle(index, viewed) {
     elements.checkViewed.checked = viewed;
   }
 
+  syncActiveCourseState();
+  renderCourseSelect();
   updateStudentItemCard(student);
   updateViewedStats();
   await saveStudentReview(student.owner, student.repo, viewed, null);
 }
 
 async function saveStudentReview(owner, repo, viewed, note) {
+  syncActiveCourseState();
   if (!owner || !repo) return;
   try {
     const payload = {};
@@ -937,7 +2070,7 @@ async function saveStudentReview(owner, repo, viewed, note) {
 // -------------------------------------------------------------
 async function handleReloadCurrentRepo() {
   const student = getCurrentStudent();
-  if (!student) return;
+  if (!student || student.source_type === 'upload') return;
 
   elements.btnReloadCurrentRepo.disabled = true;
   student.status = 'loading';
@@ -982,9 +2115,15 @@ async function handleDeleteStudent(index) {
 
   // 2. อัปเดตข้อความในช่องนำเข้าลิงก์ให้ตรงกับรายการที่เหลืออยู่
   if (elements.bulkLinksTextarea) {
-    elements.bulkLinksTextarea.value = state.students.map(s => s.raw_input).join('\n');
+    elements.bulkLinksTextarea.value = state.students
+      .filter(s => s.source_type !== 'upload')
+      .map(s => s.raw_input)
+      .join('\n');
     updateParsedStats();
   }
+
+  syncActiveCourseState();
+  renderCourseSelect();
 
   // 3. ปรับปรุงรายการที่กำลังเลือกดูอยู่ (currentIndex) และอัปเดต UI
   if (state.students.length === 0) {
@@ -1029,21 +2168,23 @@ async function handleDeleteStudent(index) {
 }
 
 async function handleClearAllCache() {
-  if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างแคชไฟล์ repository ทั้งหมดในเครื่อง?')) {
+  if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างรายการงานในวิชานี้และแคชไฟล์ในเครื่อง?')) {
     return;
   }
 
   try {
     const res = await fetch('/api/cache/clear', { method: 'POST' });
     const data = await res.json();
-    alert(`ล้างแคชเรียบร้อยแล้ว (ลบ ${data.deleted_repos_count} repos)`);
-    // ล้างรายการทั้งหมดและรีเซ็ตหน้าจอ
+    alert(`ล้างข้อมูลเรียบร้อยแล้ว (ลบแคช ${data.deleted_repos_count} รายการ)`);
+    // ล้างรายการของวิชาปัจจุบันและรีเซ็ตหน้าจอ
     state.students = [];
     state.currentIndex = -1;
     if (elements.bulkLinksTextarea) {
       elements.bulkLinksTextarea.value = '';
       updateParsedStats();
     }
+    syncActiveCourseState();
+    renderCourseSelect();
     renderStudentsList();
     updateViewedStats();
     elements.studentWorkspace.style.display = 'none';
@@ -1126,10 +2267,12 @@ function renderFileTree(nodes, container = elements.fileTreeContent, depth = 0) 
       
       let icon = '📄';
       if (node.file_type === 'image') icon = '🖼️';
+      else if (node.extension === 'py') icon = '🐍';
+      else if (node.extension === 'ipynb') icon = '📓';
       else if (node.extension === 'html' || node.extension === 'htm') icon = '🌐';
       else if (node.extension === 'css') icon = '🎨';
       else if (node.extension === 'js') icon = '⚡';
-      else if (node.extension === 'json') icon = '📋';
+      else if (node.extension === 'json' || node.extension === 'csv') icon = '📋';
       else if (node.extension === 'md') icon = '📝';
 
       fileRow.innerHTML = `
@@ -1153,7 +2296,7 @@ function renderFileTree(nodes, container = elements.fileTreeContent, depth = 0) 
 
 function findFirstTextFile(nodes) {
   for (const node of nodes) {
-    if (node.type === 'file' && (node.name.toLowerCase() === 'index.html' || node.file_type === 'text')) {
+    if (node.type === 'file' && (node.name.toLowerCase() === 'index.html' || node.extension === 'py' || node.file_type === 'text')) {
       return node;
     }
     if (node.type === 'directory' && node.children) {
@@ -1171,6 +2314,19 @@ async function openFileContent(owner, repo, relPath) {
 
   try {
     const res = await fetch(`/api/files/content/${owner}/${repo}?path=${encodeURIComponent(relPath)}`);
+    if (!res.ok) {
+      // Fallback กรณีไฟล์อัปโหลดถูกเก็บไว้ในหน่วยความจำของ client (local_bundle / support_files)
+      const cur = getCurrentStudent();
+      const supportContent = cur && cur.python_info && cur.python_info.support_files && cur.python_info.support_files[relPath];
+      if (supportContent !== undefined) {
+        const ext = (relPath.split('.').pop() || '').toLowerCase();
+        elements.activeFileIcon.innerText = ext === 'py' ? '🐍' : '📄';
+        elements.activeFileStats.innerText = `${supportContent.split('\n').length} บรรทัด • utf-8`;
+        renderSyntaxCode(supportContent, ext);
+        return;
+      }
+    }
+
     const data = await res.json();
 
     if (data.error) {
@@ -1189,7 +2345,7 @@ async function openFileContent(owner, repo, relPath) {
         </div>
       `;
     } else if (data.type === 'text') {
-      elements.activeFileIcon.innerText = '📄';
+      elements.activeFileIcon.innerText = data.extension === 'py' ? '🐍' : '📄';
       renderSyntaxCode(data.content || '', data.extension);
     } else {
       elements.activeFileIcon.innerText = '📦';
@@ -1238,13 +2394,18 @@ function highlightSyntax(rawCode, ext) {
     escaped = escaped.replace(keywords, '<span style="color: #ff7b72;">$1</span>');
     escaped = escaped.replace(/(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g, '<span style="color: #a5d6ff;">$1</span>');
     escaped = escaped.replace(/(\/\/.*$)/gm, '<span style="color: #8b949e; font-style: italic;">$1</span>');
+  } else if (ext === 'py') {
+    const pyKeywords = /\b(class|def|return|if|elif|else|for|while|in|import|from|as|try|except|finally|raise|with|pass|break|continue|True|False|None|and|or|not|super|self)\b/g;
+    escaped = escaped.replace(pyKeywords, '<span style="color: #ff7b72;">$1</span>');
+    escaped = escaped.replace(/(&quot;.*?&quot;|&#039;.*?&#039;)/g, '<span style="color: #a5d6ff;">$1</span>');
+    escaped = escaped.replace(/(#.*$)/gm, '<span style="color: #8b949e; font-style: italic;">$1</span>');
   }
 
   return escaped;
 }
 
 // -------------------------------------------------------------
-// Tab 3: Observations Rendering
+// Tab 3: Observations Rendering (Web + Python OOP Analysis)
 // -------------------------------------------------------------
 function renderInspectTab(student) {
   const container = elements.inspectContainer;
@@ -1252,105 +2413,180 @@ function renderInspectTab(student) {
 
   const observations = student.observations || [];
   const missingFiles = observations.filter(o => o.category === 'missing_file');
-  const structureNotes = observations.filter(o => o.category === 'structure');
+  const structureNotes = observations.filter(o => o.category === 'structure' || o.category === 'python_syntax' || o.category === 'python_oop');
   const consoleLogs = student.console_logs || [];
   const networkErrors = student.network_errors || [];
 
-  // 1. Missing Files Card (ข้อสังเกตหลัก)
-  const missingCard = document.createElement('div');
-  missingCard.className = 'inspect-card';
-  missingCard.innerHTML = `
-    <div class="inspect-card-header">
-      <div class="inspect-card-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span>ไฟล์ที่อ้างถึงแต่หาไม่เจอ (${missingFiles.length})</span>
-      </div>
-    </div>
-    <div class="inspect-card-body" id="missingFilesBody">
-      ${missingFiles.length === 0 ? '<p style="color: var(--color-success);">✓ ไม่พบไฟล์ที่อ้างอิงผิดพลาดใน index.html</p>' : ''}
-    </div>
-  `;
+  // 0. หากเป็นโปรเจกต์ Python / OOP ให้แสดงการ์ดวิเคราะห์โครงสร้าง OOP ด้านบนสุด
+  const pyInfo = student.python_info || (student.local_bundle && student.local_bundle.python_info);
+  if (pyInfo && pyInfo.has_python) {
+    const oopSum = pyInfo.oop_summary || {};
+    const allClasses = oopSum.classes || [];
+    const syntaxErrs = oopSum.syntax_errors || [];
 
-  if (missingFiles.length > 0) {
-    const body = missingCard.querySelector('#missingFilesBody');
-    missingFiles.forEach(item => {
-      const issue = document.createElement('div');
-      issue.className = 'issue-item';
-      issue.innerHTML = `
-        <div class="issue-title">${escapeHtml(item.title)}</div>
-        <div class="issue-detail">${escapeHtml(item.detail)}</div>
-        ${item.suggestion ? `
-          <div class="suggestion-box">
-            <span>💡 <strong>แนะนำแก้ไข:</strong> พบไฟล์ชื่อเดียวกันที่ <code>${escapeHtml(item.suggestion)}</code></span>
+    const pyCard = document.createElement('div');
+    pyCard.className = 'inspect-card';
+    pyCard.innerHTML = `
+      <div class="inspect-card-header">
+        <div class="inspect-card-title">
+          <span>🐍</span>
+          <span>โครงสร้างโค้ด Python & การเขียนโปรแกรมเชิงวัตถุ (OOP Analysis)</span>
+        </div>
+      </div>
+      <div class="inspect-card-body">
+        <div class="oop-summary-stats">
+          <div class="oop-stat-box">
+            <span class="oop-stat-num">${pyInfo.total_python_files || 0}</span>
+            <span class="oop-stat-label">ไฟล์ Python</span>
           </div>
-        ` : ''}
-      `;
-      body.appendChild(issue);
-    });
-  }
-  container.appendChild(missingCard);
-
-  // 2. Console Logs & 404s Card
-  const consoleCard = document.createElement('div');
-  consoleCard.className = 'inspect-card';
-  consoleCard.innerHTML = `
-    <div class="inspect-card-header">
-      <div class="inspect-card-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-          <polygon points="12 2 2 22 22 22 12 2"></polygon>
-          <line x1="12" y1="9" x2="12" y2="13"></line>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
-        <span>Console Errors & Failed Requests (${consoleLogs.length + networkErrors.length})</span>
+          <div class="oop-stat-box">
+            <span class="oop-stat-num">${oopSum.total_classes || 0}</span>
+            <span class="oop-stat-label">คลาส (Classes)</span>
+          </div>
+          <div class="oop-stat-box">
+            <span class="oop-stat-num">${oopSum.total_methods || 0}</span>
+            <span class="oop-stat-label">เมธอด (Methods)</span>
+          </div>
+          <div class="oop-stat-box">
+            <span class="oop-stat-num">${oopSum.has_inheritance ? '✓ มี' : '-'}</span>
+            <span class="oop-stat-label">การสืบทอด (Inheritance)</span>
+          </div>
+        </div>
+        ${
+          syntaxErrs.length > 0
+            ? syntaxErrs.map(e => `
+                <div class="issue-item" style="margin-top: 10px;">
+                  <div class="issue-title">❌ SyntaxError ในไฟล์ ${escapeHtml(e.file)} (บรรทัด ${e.lineno || '?'})</div>
+                  <div class="issue-detail">${escapeHtml(e.message || '')}</div>
+                </div>
+              `).join('')
+            : ''
+        }
+        ${
+          allClasses.length > 0
+            ? `<div class="oop-inspect-grid">
+                ${allClasses.map(cls => `
+                  <div class="oop-inspect-class-card">
+                    <div class="oop-inspect-class-head">
+                      <strong>🏛️ class ${escapeHtml(cls.name)}</strong>
+                      <span class="oop-inspect-file-tag">${escapeHtml(cls.file)}:${cls.lineno}</span>
+                    </div>
+                    ${cls.bases && cls.bases.length > 0 ? `<div class="oop-inspect-row"><strong>สืบทอดจาก (Base Class):</strong> <code>${escapeHtml(cls.bases.join(', '))}</code></div>` : ''}
+                    <div class="oop-inspect-row">
+                      <strong>Attributes (<code>self.xxx</code>):</strong>
+                      ${cls.attributes && cls.attributes.length > 0 ? cls.attributes.map(a => `<code>self.${escapeHtml(a)}</code>`).join(' ') : '<span style="color:var(--text-muted);">ไม่พบ</span>'}
+                    </div>
+                    <div class="oop-inspect-row">
+                      <strong>Methods (<code>def</code>):</strong>
+                      ${cls.methods && cls.methods.length > 0 ? cls.methods.map(m => `<code>${escapeHtml(m.name)}(${escapeHtml((m.args || []).join(', '))})</code>`).join(' ') : '<span style="color:var(--text-muted);">ไม่พบ</span>'}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>`
+            : `<p style="color: var(--text-secondary); margin-top: 8px;">ไม่พบการประกาศ <code>class</code> ในโปรเจกต์นี้ (เป็นสคริปต์ Python แบบฟังก์ชัน/ลำดับคำสั่งทั่วไป)</p>`
+        }
       </div>
-    </div>
-    <div class="inspect-card-body" id="consoleBody">
-      ${consoleLogs.length === 0 && networkErrors.length === 0 ? '<p style="color: var(--text-secondary);">ไม่พบ error หรือ failed request ขณะเปิดพรีวิวหน้าเว็บ</p>' : ''}
-    </div>
-  `;
-
-  if (consoleLogs.length > 0 || networkErrors.length > 0) {
-    const body = consoleCard.querySelector('#consoleBody');
-    const table = document.createElement('table');
-    table.className = 'console-table';
-    table.innerHTML = `
-      <thead>
-        <tr>
-          <th style="width: 80px;">ประเภท</th>
-          <th>รายละเอียดข้อความ</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
     `;
-    const tbody = table.querySelector('tbody');
-
-    networkErrors.forEach(err => {
-      const tr = document.createElement('tr');
-      tr.className = 'console-row error';
-      tr.innerHTML = `
-        <td><span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">404</span></td>
-        <td>${escapeHtml(err.message)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    consoleLogs.forEach(log => {
-      const tr = document.createElement('tr');
-      tr.className = `console-row ${log.type}`;
-      tr.innerHTML = `
-        <td><span class="badge" style="${log.type === 'error' ? 'background: rgba(239, 68, 68, 0.2); color: #f87171;' : 'background: rgba(245, 158, 11, 0.2); color: #fbbf24;'}">${log.type.toUpperCase()}</span></td>
-        <td>${escapeHtml(log.message)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    body.appendChild(table);
+    container.appendChild(pyCard);
   }
-  container.appendChild(consoleCard);
+
+  // 1. Missing Files Card (ข้อสังเกตหลักสำหรับเว็บ)
+  if (student.has_web || missingFiles.length > 0) {
+    const missingCard = document.createElement('div');
+    missingCard.className = 'inspect-card';
+    missingCard.innerHTML = `
+      <div class="inspect-card-header">
+        <div class="inspect-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>ไฟล์ที่อ้างถึงแต่หาไม่เจอ (${missingFiles.length})</span>
+        </div>
+      </div>
+      <div class="inspect-card-body" id="missingFilesBody">
+        ${missingFiles.length === 0 ? '<p style="color: var(--color-success);">✓ ไม่พบไฟล์ที่อ้างอิงผิดพลาดใน index.html</p>' : ''}
+      </div>
+    `;
+
+    if (missingFiles.length > 0) {
+      const body = missingCard.querySelector('#missingFilesBody');
+      missingFiles.forEach(item => {
+        const issue = document.createElement('div');
+        issue.className = 'issue-item';
+        issue.innerHTML = `
+          <div class="issue-title">${escapeHtml(item.title)}</div>
+          <div class="issue-detail">${escapeHtml(item.detail)}</div>
+          ${item.suggestion ? `
+            <div class="suggestion-box">
+              <span>💡 <strong>แนะนำแก้ไข:</strong> พบไฟล์ชื่อเดียวกันที่ <code>${escapeHtml(item.suggestion)}</code></span>
+            </div>
+          ` : ''}
+        `;
+        body.appendChild(issue);
+      });
+    }
+    container.appendChild(missingCard);
+
+    // 2. Console Logs & 404s Card
+    const consoleCard = document.createElement('div');
+    consoleCard.className = 'inspect-card';
+    consoleCard.innerHTML = `
+      <div class="inspect-card-header">
+        <div class="inspect-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+            <polygon points="12 2 2 22 22 22 12 2"></polygon>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>Console Errors & Failed Requests (${consoleLogs.length + networkErrors.length})</span>
+        </div>
+      </div>
+      <div class="inspect-card-body" id="consoleBody">
+        ${consoleLogs.length === 0 && networkErrors.length === 0 ? '<p style="color: var(--text-secondary);">ไม่พบ error หรือ failed request ขณะเปิดพรีวิวหน้าเว็บ</p>' : ''}
+      </div>
+    `;
+
+    if (consoleLogs.length > 0 || networkErrors.length > 0) {
+      const body = consoleCard.querySelector('#consoleBody');
+      const table = document.createElement('table');
+      table.className = 'console-table';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th style="width: 80px;">ประเภท</th>
+            <th>รายละเอียดข้อความ</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = table.querySelector('tbody');
+
+      networkErrors.forEach(err => {
+        const tr = document.createElement('tr');
+        tr.className = 'console-row error';
+        tr.innerHTML = `
+          <td><span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">404</span></td>
+          <td>${escapeHtml(err.message)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      consoleLogs.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.className = `console-row ${log.type}`;
+        tr.innerHTML = `
+          <td><span class="badge" style="${log.type === 'error' ? 'background: rgba(239, 68, 68, 0.2); color: #f87171;' : 'background: rgba(245, 158, 11, 0.2); color: #fbbf24;'}">${log.type.toUpperCase()}</span></td>
+          <td>${escapeHtml(log.message)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      body.appendChild(table);
+    }
+    container.appendChild(consoleCard);
+  }
 
   // 3. Repository Structure & Metadata Card
   const metaCard = document.createElement('div');
@@ -1363,21 +2599,21 @@ function renderInspectTab(student) {
           <line x1="12" y1="16" x2="12" y2="12"></line>
           <line x1="12" y1="8" x2="12.01" y2="8"></line>
         </svg>
-        <span>ข้อมูล Repository และโครงสร้าง</span>
+        <span>ข้อมูลงานและโครงสร้างไฟล์</span>
       </div>
     </div>
     <div class="inspect-card-body">
       ${structureNotes.map(n => `
-        <div class="issue-item warning">
+        <div class="issue-item ${n.severity === 'error' ? '' : 'warning'}">
           <div class="issue-title">${escapeHtml(n.title)}</div>
           <div class="issue-detail">${escapeHtml(n.detail)}</div>
         </div>
       `).join('')}
       <div style="font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
-        <div><strong>URL ต้นฉบับ:</strong> <a href="${student.canonical_url}" target="_blank" style="color: var(--accent-primary);">${student.canonical_url}</a></div>
-        <div><strong>Commit Hash:</strong> <code>${student.meta && student.meta.commit_hash ? student.meta.commit_hash : 'ไม่ระบุ'}</code></div>
+        <div><strong>แหล่งที่มา:</strong> ${student.canonical_url && student.canonical_url.startsWith('upload://') ? `อัปโหลดไฟล์ (${escapeHtml(student.raw_input)})` : `<a href="${student.canonical_url}" target="_blank" style="color: var(--accent-primary);">${student.canonical_url}</a>`}</div>
+        <div><strong>Commit / สถานะ:</strong> <code>${student.meta && student.meta.commit_hash ? student.meta.commit_hash : 'ไม่ระบุ'}</code></div>
         <div><strong>จำนวนไฟล์ทั้งหมด:</strong> ${student.meta && student.meta.total_files ? student.meta.total_files : '-'} ไฟล์ (${formatFileSize(student.meta ? student.meta.total_size_bytes : 0)})</div>
-        <div><strong>เวลาที่ดาวน์โหลด:</strong> ${student.meta && student.meta.fetched_at ? new Date(student.meta.fetched_at).toLocaleString('th-TH') : '-'}</div>
+        <div><strong>เวลาที่นำเข้า:</strong> ${student.meta && student.meta.fetched_at ? new Date(student.meta.fetched_at).toLocaleString('th-TH') : '-'}</div>
       </div>
     </div>
   `;

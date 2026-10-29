@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 
 TEXT_EXTENSIONS = {
     ".html", ".htm", ".css", ".js", ".mjs", ".jsx", ".ts", ".tsx",
-    ".json", ".md", ".txt", ".py", ".pyw", ".sh", ".bash", ".zsh",
+    ".json", ".md", ".txt", ".py", ".pyw", ".ipynb", ".sh", ".bash", ".zsh",
     ".yaml", ".yml", ".xml", ".svg", ".sql", ".ini", ".conf", ".env",
-    ".gitignore", ".gitattributes", ".editorconfig",
+    ".gitignore", ".gitattributes", ".editorconfig", ".csv",
 }
 
 IMAGE_EXTENSIONS = {

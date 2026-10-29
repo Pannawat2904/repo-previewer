@@ -4,12 +4,17 @@ Repo Previewer - เซิร์ฟเวอร์หลัก (FastAPI)
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import shutil
 import sys
 import re
+import tempfile
+import time
 import urllib.parse
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -30,9 +35,11 @@ from previewer.fetch import (
     get_repo_cache_dir,
     is_repo_cached,
     read_repo_meta,
+    safe_extract_zip,
 )
 from previewer.inspect import inspect_repository
 from previewer.links import RepoItem, normalize_github_url, parse_bulk_links, parse_input_line
+from previewer.python_inspector import analyze_python_source, inspect_python_project, parse_ipynb_content
 from previewer.serve import CONSOLE_INJECT_SCRIPT, find_index_html, server_manager
 from previewer.storage import get_review, load_all_reviews, save_review
 
@@ -53,6 +60,8 @@ async def ensure_repo_cached(owner: str, repo: str) -> Path:
     """
     repo_dir = get_repo_cache_dir(owner, repo)
     if not repo_dir.exists():
+        if owner == "local-upload":
+            raise HTTPException(status_code=404, detail="ไม่พบไฟล์อัปโหลดในแคช กรุณาอัปโหลดไฟล์ใหม่อีกครั้ง")
         logger.info(f"Auto-fetching repository on-demand: {owner}/{repo}")
         item = RepoItem(
             raw_input=f"https://github.com/{owner}/{repo}",
@@ -151,6 +160,28 @@ class ReviewUpdateRequest(BaseModel):
 class DeleteSingleCacheRequest(BaseModel):
     owner: Optional[str] = ""
     repo: Optional[str] = ""
+
+
+class PythonAnalyzeRequest(BaseModel):
+    code: str
+    filename: str = "main.py"
+
+
+class UploadedFileItem(BaseModel):
+    name: Optional[str] = None
+    filename: Optional[str] = None
+    content_base64: str
+    student_name: Optional[str] = None
+
+    @property
+    def resolved_name(self) -> str:
+        return (self.name or self.filename or "main.py").strip()
+
+
+class UploadBatchRequest(BaseModel):
+    files: List[UploadedFileItem]
+    group_as_single_student: bool = False
+    single_student_name: Optional[str] = None
 
 
 # -------------------------------------------------------------
@@ -310,11 +341,162 @@ async def api_fetch_single(req: FetchSingleRequest):
 async def api_get_preview(owner: str, repo: str):
     """
     ดึงหรือเริ่มเปิดเซิร์ฟเวอร์พรีวิว (Lazy start) สำหรับ repo นี้
-    พร้อม Auto-fetch อัตโนมัติเมื่อรันบน Serverless (Vercel)
+    พร้อมตรวจสอบโปรเจกต์ Python / OOP และ Auto-fetch บน Serverless (Vercel)
     """
     repo_dir = await ensure_repo_cached(owner, repo)
-    info = server_manager.get_or_start(owner, repo, repo_dir)
+    info = dict(server_manager.get_or_start(owner, repo, repo_dir))
+    python_info = inspect_python_project(repo_dir)
+    info["has_python"] = python_info.get("has_python", False)
+    info["python_info"] = python_info
     return info
+
+
+@app.post("/api/python/analyze")
+async def api_analyze_python(req: PythonAnalyzeRequest):
+    """วิเคราะห์โครงสร้าง OOP (Classes, Methods, Attributes, SyntaxError) จากโค้ด Python"""
+    if req.filename.lower().endswith(".ipynb"):
+        return parse_ipynb_content(req.code, req.filename)
+    return analyze_python_source(req.code, req.filename)
+
+
+def _sanitize_slug(text: str, idx: int = 1) -> str:
+    """สร้างชื่อโฟลเดอร์ repo_slug ที่ปลอดภัยสำหรับไฟล์อัปโหลด"""
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._-")
+    if not clean:
+        clean = f"student_{idx}_{int(time.time())}"
+    return clean[:80]
+
+
+def _save_uploaded_files_to_repo_dir(repo_dir: Path, uploaded_items: List[UploadedFileItem], student_label: str) -> dict:
+    """บันทึกหรือแตกไฟล์ .zip/.py/.ipynb/.html ลงในโฟลเดอร์แคชของนักเรียน"""
+    if repo_dir.exists():
+        shutil.rmtree(repo_dir, ignore_errors=True)
+    repo_dir.mkdir(parents=True, exist_ok=True)
+
+    for uf in uploaded_items:
+        raw_bytes = base64.b64decode(uf.content_base64)
+        # รองรับกรณีเลือกอัปโหลดทั้งโฟลเดอร์ (webkitRelativePath เช่น studentA/src/main.py)
+        rel_parts = [p for p in Path(uf.resolved_name.replace("\\", "/")).parts if p not in ("", ".", "..") and not p.startswith(".")]
+        if not rel_parts:
+            rel_parts = ["main.py"]
+        safe_rel = Path(*rel_parts)
+
+        if safe_rel.suffix.lower() == ".zip" and len(uploaded_items) == 1:
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                tmp_zip.write(raw_bytes)
+                tmp_zip_path = Path(tmp_zip.name)
+            try:
+                safe_extract_zip(tmp_zip_path, repo_dir)
+            finally:
+                tmp_zip_path.unlink(missing_ok=True)
+        else:
+            dest_file = (repo_dir / safe_rel).resolve()
+            if dest_file.is_relative_to(repo_dir.resolve()):
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                dest_file.write_bytes(raw_bytes)
+
+    all_files = [p for p in repo_dir.glob("**/*") if p.is_file() and p.name != ".repo_meta.json"]
+    total_size = sum(p.stat().st_size for p in all_files)
+    has_web, _, _ = find_index_html(repo_dir)
+    py_info = inspect_python_project(repo_dir)
+
+    meta = {
+        "owner": "local-upload",
+        "repo": repo_dir.name,
+        "student_name": student_label,
+        "canonical_url": f"upload://{repo_dir.name}",
+        "commit_hash": "local-file",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "total_files": len(all_files),
+        "total_size_bytes": total_size,
+        "has_web": has_web,
+        "has_python": py_info.get("has_python", False),
+    }
+    with open(repo_dir / ".repo_meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    return {
+        "meta": meta,
+        "tree": build_file_tree(repo_dir),
+        "inspect": inspect_repository(repo_dir),
+        "preview": server_manager.get_or_start("local-upload", repo_dir.name, repo_dir),
+        "python_info": py_info,
+    }
+
+
+@app.post("/api/repos/upload-batch")
+async def api_upload_batch(req: UploadBatchRequest):
+    """
+    อัปโหลดไฟล์งานของนักเรียน (.py, .ipynb, .zip, .html, .css, .js)
+    รองรับทั้งแบบ:
+    1. แยกไฟล์ละ 1 คน (เช่น ครูเลือกไฟล์ .py หรือ .zip ของนักเรียน 20 คนพร้อมกัน)
+    2. รวมหลายไฟล์เป็นโปรเจกต์ของนักเรียน 1 คน
+    """
+    if not req.files:
+        raise HTTPException(status_code=400, detail="ไม่มีไฟล์ที่อัปโหลด")
+
+    reviews = load_all_reviews()
+    created_items = []
+    ts_suffix = int(time.time() * 1000) % 100000
+
+    if req.group_as_single_student:
+        label = (req.single_student_name or Path(req.files[0].resolved_name).stem or "นักเรียน").strip()
+        repo_slug = _sanitize_slug(f"{label}_{ts_suffix}", 1)
+        repo_dir = get_repo_cache_dir("local-upload", repo_slug)
+        bundle = _save_uploaded_files_to_repo_dir(repo_dir, req.files, label)
+        key = f"local-upload/{repo_slug}"
+        rev = reviews.get(key.lower(), {"viewed": False, "note": ""})
+        created_items.append({
+            "key": key,
+            "raw_input": f"[ไฟล์อัปโหลด] {label}",
+            "owner": "local-upload",
+            "repo": repo_slug,
+            "student_name": label,
+            "canonical_url": f"upload://{repo_slug}",
+            "source_type": "upload",
+            "is_valid": True,
+            "is_uploaded": True,
+            "cached": True,
+            "status": "ready",
+            "viewed": rev.get("viewed", False),
+            "note": rev.get("note", ""),
+            "meta": bundle["meta"],
+            "has_web": bundle["meta"]["has_web"],
+            "has_python": bundle["meta"]["has_python"],
+            "python_info": bundle["python_info"],
+            "local_bundle": bundle,
+        })
+    else:
+        for idx, uf in enumerate(req.files, start=1):
+            stem = Path(uf.resolved_name).stem
+            label = (uf.student_name or stem or f"นักเรียนคนที่ {idx}").strip()
+            repo_slug = _sanitize_slug(f"{stem}_{ts_suffix}_{idx}", idx)
+            repo_dir = get_repo_cache_dir("local-upload", repo_slug)
+            bundle = _save_uploaded_files_to_repo_dir(repo_dir, [uf], label)
+            key = f"local-upload/{repo_slug}"
+            rev = reviews.get(key.lower(), {"viewed": False, "note": ""})
+            created_items.append({
+                "key": key,
+                "raw_input": f"[ไฟล์] {uf.resolved_name}",
+                "owner": "local-upload",
+                "repo": repo_slug,
+                "student_name": label,
+                "canonical_url": f"upload://{repo_slug}",
+                "source_type": "upload",
+                "is_valid": True,
+                "is_uploaded": True,
+                "cached": True,
+                "status": "ready",
+                "viewed": rev.get("viewed", False),
+                "note": rev.get("note", ""),
+                "meta": bundle["meta"],
+                "has_web": bundle["meta"]["has_web"],
+                "has_python": bundle["meta"]["has_python"],
+                "python_info": bundle["python_info"],
+                "local_bundle": bundle,
+            })
+
+    return {"items": created_items, "total": len(created_items)}
 
 
 @app.get("/api/inspect/{owner}/{repo}")

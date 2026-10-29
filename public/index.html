@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261029-3">
+  <link rel="stylesheet" href="/static/app.css?v=20261029-4">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -153,11 +153,11 @@
       </div>
 
       <div class="header-actions">
-        <button id="btnOpenInputModal" class="btn btn-primary" title="วางลิงก์ GitHub เพื่อนำเข้างานนักเรียน">
+        <button id="btnOpenInputModal" class="btn btn-primary" title="นำเข้าลิงก์ GitHub หรืออัปโหลดไฟล์งานนักเรียน (.py, .ipynb, .zip, .html)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <path d="M12 5v14M5 12h14"></path>
           </svg>
-          <span>นำเข้าลิงก์</span>
+          <span>นำเข้างานตรวจ</span>
         </button>
 
         <div class="header-menu-group">
@@ -182,9 +182,33 @@
 
     <!-- Main Container -->
     <div class="main-container">
-      <!-- Left Sidebar: Students List + Active Student Note & Meta -->
+      <!-- Left Sidebar: Course Switcher + Students List + Active Student Note & Meta -->
       <aside class="sidebar" id="mainSidebar">
         <div class="sidebar-header">
+          <!-- Multi-Subject & Assignment Switcher -->
+          <div class="course-switcher-box">
+            <div class="course-switcher-row">
+              <select id="courseSelect" class="course-select" title="สลับรายวิชาหรือชิ้นงานที่กำลังตรวจ"></select>
+              <button id="btnToggleAddCourse" class="btn btn-secondary btn-icon-only btn-course-sm" title="เพิ่มวิชาหรือชิ้นงานใหม่">+</button>
+              <button id="btnDeleteCourse" class="btn btn-secondary btn-icon-only btn-course-sm btn-danger-hover" title="ลบรายการวิชานี้">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Inline Quick Add Course / Assignment Form -->
+            <div id="courseCreateForm" class="course-create-form" style="display: none;">
+              <input type="text" id="newCourseSubjectInput" placeholder="ชื่อวิชา (เช่น Python OOP)">
+              <input type="text" id="newCourseAssignInput" placeholder="ชื่องานย่อย (เช่น งานที่ 1: Class & Object)">
+              <div class="course-create-actions">
+                <button type="button" id="btnCancelAddCourse" class="btn btn-secondary btn-sm">ยกเลิก</button>
+                <button type="button" id="btnConfirmAddCourse" class="btn btn-primary btn-sm">สร้างวิชา/งาน</button>
+              </div>
+            </div>
+          </div>
+
           <div class="sidebar-title-row">
             <h2>รายชื่อ <span class="counter-badge" id="totalStudentsCount">0</span></h2>
             <div class="sidebar-header-right">
@@ -252,7 +276,7 @@
             </svg>
           </div>
           <h2>ยังไม่ได้เลือกรายการตรวจงาน</h2>
-          <p>กดปุ่ม <strong>+ นำเข้าลิงก์</strong> ด้านบนขวาเพื่อวางลิงก์ GitHub ของนักเรียน แล้วคลิกเลือกชื่อจากแถบด้านซ้ายเพื่อพรีวิวเว็บและตรวจโค้ดแบบเต็มหน้าจอ</p>
+          <p>เลือกวิชาจากแถบด้านซ้าย แล้วกดปุ่ม <strong>+ นำเข้างานตรวจ</strong> ด้านบนขวาเพื่อวางลิงก์ GitHub หรืออัปโหลดไฟล์งานนักเรียน (รองรับทั้ง <strong>เว็บ HTML/CSS/JS</strong> และ <strong>Python / OOP <code>.py</code>, <code>.ipynb</code>, <code>.zip</code></strong> พร้อมรันดูผลลัพธ์ได้ทันที)</p>
           <div class="blank-shortcuts">
             <span><kbd>←</kbd> <kbd>→</kbd> เปลี่ยนคน</span>
             <span><kbd>Space</kbd> ตรวจแล้ว</span>
@@ -280,9 +304,65 @@
               <button id="btnSwitchToCode" class="btn btn-primary btn-sm">ไปที่แท็บโค้ดทันที</button>
             </div>
 
-            <!-- Iframe Container -->
+            <!-- Iframe Container (For Static Web HTML Projects) -->
             <div class="iframe-container device-desktop" id="iframeContainer">
               <iframe id="previewIframe" sandbox="allow-scripts allow-forms allow-modals" src="about:blank" title="Student Web Preview"></iframe>
+            </div>
+
+            <!-- Python & OOP Execution Studio (For Python .py / .ipynb Projects) -->
+            <div id="pythonPreviewStudio" class="py-studio" style="display: none;">
+              <div class="py-studio-toolbar">
+                <div class="py-toolbar-left">
+                  <span class="py-engine-badge">🐍 Python OOP Runner</span>
+                  <select id="pyEntryFileSelect" class="py-file-select" title="เลือกไฟล์ Python ที่ต้องการรัน"></select>
+                  <button id="btnRunPython" class="btn btn-primary btn-sm" title="รันโค้ด Python และดูผลลัพธ์ (คีย์ลัด Ctrl+Enter)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <span>รันโค้ดดูผลลัพธ์</span>
+                  </button>
+                  <button id="btnResetPythonCode" class="btn btn-secondary btn-sm" title="คืนค่าโค้ดต้นฉบับของนักเรียน" style="display: none;">↺ คืนค่าโค้ดเดิม</button>
+                </div>
+                <div class="py-toolbar-right">
+                  <span id="pyExecStatus" class="py-exec-status">พร้อมรัน</span>
+                </div>
+              </div>
+
+              <!-- Detected OOP Classes & Methods Quick Bar -->
+              <div id="pyOopChipsBar" class="py-oop-chips-bar"></div>
+
+              <!-- Split Workspace: Left = Code Editor / Notebook, Right = Output Console & Stdin -->
+              <div class="py-studio-split">
+                <div class="py-editor-pane">
+                  <div class="py-pane-header">
+                    <span>📝 โค้ด Python (แก้ไขเพื่อทดสอบสร้าง Object / เรียก Method เพิ่มเติมได้)</span>
+                    <span id="pyEditorStats" class="file-stats"></span>
+                  </div>
+                  <div class="py-editor-body">
+                    <div id="pyEditorLineNumbers" class="py-line-numbers">1</div>
+                    <textarea id="pyCodeEditor" class="py-code-textarea" spellcheck="false" placeholder="# โค้ด Python ของนักเรียน..."></textarea>
+                  </div>
+                </div>
+
+                <div class="py-output-pane">
+                  <div class="py-stdin-box">
+                    <div class="py-stdin-header">
+                      <span>⌨️ ข้อมูลนำเข้าล่วงหน้า (Input / stdin สำหรับคำสั่ง <code>input()</code>)</span>
+                      <span id="pyInputDetectedBadge" class="badge badge-warning" style="display: none;">พบการใช้ input()</span>
+                    </div>
+                    <textarea id="pyStdinInput" rows="2" placeholder="หากโค้ดมี input() สามารถพิมพ์ค่าที่จะป้อนไว้ที่นี่ (บรรทัดละ 1 ค่า) หรือเว้นว่างไว้เพื่อให้ระบบถามขณะรัน..."></textarea>
+                  </div>
+
+                  <div class="py-output-header">
+                    <span>🖥️ ผลลัพธ์การรันโปรแกรม (Output Console)</span>
+                    <button id="btnClearPyOutput" class="btn-text-sm" title="ล้างผลลัพธ์">ล้างหน้าจอ</button>
+                  </div>
+
+                  <div id="pyOutputConsole" class="py-output-console">
+                    <div class="py-output-placeholder">กดปุ่ม "▶ รันโค้ดดูผลลัพธ์" เพื่อดูผลลัพธ์การทำงานของโค้ด Python</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -331,25 +411,70 @@
     </div>
   </div>
 
-  <!-- Modal: Bulk Link Input -->
+  <!-- Modal: Bulk Link & File Upload Input -->
   <div id="inputModal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>วางลิงก์ส่งงานของนักเรียน</h3>
+        <div>
+          <h3>นำเข้างานนักเรียนเพื่อตรวจ</h3>
+          <span id="modalActiveCourseLabel" class="modal-course-sub">วิชาปัจจุบัน</span>
+        </div>
         <button id="btnCloseModal" class="btn-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-help-text">
-          วางหนึ่งรายการต่อหนึ่งบรรทัด รองรับรูปแบบ <code>ลิงก์</code> หรือ <code>ชื่อนักเรียน&lt;tab หรือ comma&gt;ลิงก์</code><br>
-          (ระบบจะตัดส่วนเกิน ตัดรายการซ้ำ และแปลงลิงก์ให้อัตโนมัติ)
-        </p>
-        <textarea id="bulkLinksTextarea" rows="9" placeholder="ตัวอย่าง:
+        <!-- Import Mode Switcher Tabs -->
+        <div class="import-mode-tabs">
+          <button type="button" class="import-mode-tab active" data-import-mode="github">
+            🔗 วางลิงก์ GitHub (เว็บ / Python)
+          </button>
+          <button type="button" class="import-mode-tab" data-import-mode="upload">
+            📂 อัปโหลดไฟล์งาน (.py / .ipynb / .zip / .html)
+          </button>
+        </div>
+
+        <!-- Mode 1: GitHub Links -->
+        <div id="importPaneGithub" class="import-pane active">
+          <p class="modal-help-text">
+            วางหนึ่งรายการต่อหนึ่งบรรทัด รองรับทั้งโปรเจกต์ <strong>เว็บ (HTML/CSS/JS)</strong> และโปรเจกต์ <strong>Python / OOP</strong><br>
+            รูปแบบ: <code>ลิงก์ GitHub</code> หรือ <code>ชื่อนักเรียน&lt;tab หรือ comma&gt;ลิงก์ GitHub</code>
+          </p>
+          <textarea id="bulkLinksTextarea" rows="8" placeholder="ตัวอย่าง:
 https://github.com/patvikan24-oss/my-profil-013
-สมชาย เข็มกลัด	https://github.com/somchai/web-profile
+สมชาย เข็มกลัด	https://github.com/somchai/python-oop-lab1
 สมหญิง สดใส, https://github.com/somying/my-card/tree/main"></textarea>
 
-        <div class="modal-stats-row">
-          <span id="parsedStatsLabel">ตรวจพบคัดกรอง: 0 รายการ</span>
+          <div class="modal-stats-row">
+            <span id="parsedStatsLabel">ตรวจพบคัดกรอง: 0 รายการ</span>
+          </div>
+        </div>
+
+        <!-- Mode 2: Local File Upload (.py, .ipynb, .zip, .html) -->
+        <div id="importPaneUpload" class="import-pane" style="display: none;">
+          <p class="modal-help-text">
+            เลือกหรือลากวางไฟล์งานของนักเรียนจากคอมพิวเตอร์ได้พร้อมกันหลายไฟล์ เช่น <code>.py</code>, <code>.ipynb</code>, <code>.zip</code>, หรือ <code>.html</code>
+          </p>
+
+          <label for="studentFilesInput" id="uploadDropZone" class="upload-drop-zone">
+            <input type="file" id="studentFilesInput" multiple accept=".py,.ipynb,.zip,.html,.htm,.css,.js,.txt,.csv,.json" style="display: none;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <div class="upload-drop-title">คลิกเลือกไฟล์ หรือลากไฟล์มาวางที่นี่</div>
+            <div class="upload-drop-sub">รองรับไฟล์ .py, .ipynb (Jupyter), .zip (ทั้งโฟลเดอร์งาน), .html, .css, .js</div>
+          </label>
+
+          <div class="upload-options-row">
+            <label class="custom-checkbox-label upload-group-toggle">
+              <input type="checkbox" id="checkGroupSingleStudent">
+              <span class="checkbox-box"></span>
+              <span class="checkbox-text">รวมทุกไฟล์ที่เลือกเป็นโปรเจกต์ของนักเรียนคนเดียว (เช่น OOP แยกหลายไฟล์)</span>
+            </label>
+            <input type="text" id="singleStudentNameInput" class="single-student-name-input" placeholder="ระบุชื่อนักเรียน (เช่น สมชาย ม.4/1)..." style="display: none;">
+          </div>
+
+          <div id="selectedFilesList" class="selected-files-list"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -364,6 +489,6 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261029-3"></script>
+  <script src="/static/app.js?v=20261029-4"></script>
 </body>
 </html>

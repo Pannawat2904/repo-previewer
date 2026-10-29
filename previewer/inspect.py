@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import unquote, urlparse
 
+from previewer.python_inspector import inspect_python_project
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,6 +77,20 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
         except Exception:
             pass
 
+    # 1.5 ตรวจสอบไฟล์ Python / OOP (.py, .ipynb)
+    python_info = inspect_python_project(repo_dir)
+    if python_info.get("has_python"):
+        for pyf in python_info.get("files", []):
+            analysis = pyf.get("analysis", {})
+            if not analysis.get("valid_syntax") and analysis.get("syntax_error"):
+                se = analysis["syntax_error"]
+                observations.append({
+                    "category": "python_syntax",
+                    "type": "error",
+                    "title": f"SyntaxError ในไฟล์ {pyf['path']} (บรรทัดที่ {se['lineno']})",
+                    "detail": f"{se['message']}: {se['line_text']}",
+                })
+
     # 2. ตรวจสอบตำแหน่ง index.html
     root_index = repo_dir / "index.html"
     index_file = None
@@ -99,14 +115,30 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
                 break
 
     if not index_file:
-        observations.append({
-            "category": "structure",
-            "type": "info",
-            "title": "ไม่พบไฟล์ index.html",
-            "detail": "repository นี้อาจไม่ใช่เว็บสถิต (ไม่มีหน้าเว็บเริ่มต้น HTML)",
-        })
+        if python_info.get("has_python"):
+            oop = python_info.get("oop_summary", {})
+            observations.append({
+                "category": "structure",
+                "type": "info",
+                "title": f"ตรวจพบโปรเจกต์ Python ({oop.get('total_files', 0)} ไฟล์)",
+                "detail": (
+                    f"พบโครงสร้าง Class (OOP) {oop.get('total_classes', 0)} คลาส, "
+                    f"Method {oop.get('total_methods', 0)} รายการ, "
+                    f"และฟังก์ชัน {oop.get('total_functions', 0)} รายการ "
+                    f"(สามารถกดรันโค้ดดูผลลัพธ์ได้ในแท็บพรีวิว)"
+                ),
+            })
+        else:
+            observations.append({
+                "category": "structure",
+                "type": "info",
+                "title": "ไม่พบไฟล์ index.html",
+                "detail": "repository นี้อาจไม่ใช่เว็บสถิต (ไม่มีหน้าเว็บเริ่มต้น HTML)",
+            })
         return {
             "has_web": False,
+            "has_python": python_info.get("has_python", False),
+            "python_info": python_info,
             "observations": observations,
             "meta": meta_info,
         }
@@ -129,6 +161,8 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
         })
         return {
             "has_web": True,
+            "has_python": python_info.get("has_python", False),
+            "python_info": python_info,
             "observations": observations,
             "meta": meta_info,
         }
@@ -192,6 +226,8 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
 
     return {
         "has_web": True,
+        "has_python": python_info.get("has_python", False),
+        "python_info": python_info,
         "observations": observations,
         "meta": meta_info,
     }
