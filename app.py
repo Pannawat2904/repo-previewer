@@ -530,6 +530,15 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.get("/favicon.ico")
+@app.get("/favicon.svg")
+async def favicon():
+    fav_file = (PUBLIC_DIR / "static" / "favicon.svg") if (PUBLIC_DIR / "static" / "favicon.svg").exists() else (STATIC_DIR / "favicon.svg")
+    if fav_file.exists():
+        return FileResponse(fav_file, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="Favicon not found")
+
+
 @app.get("/")
 @app.get("/index.html")
 @app.get("/index.htm")
