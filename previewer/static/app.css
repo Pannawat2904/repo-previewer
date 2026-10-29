@@ -90,11 +90,11 @@ body {
 }
 
 .cursor-canvas {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -808,12 +808,6 @@ kbd {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-floating);
   position: relative;
-  animation: heroCardFloat 6s ease-in-out infinite alternate;
-}
-
-@keyframes heroCardFloat {
-  0% { transform: translateY(0px); box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(56, 189, 248, 0.12); }
-  100% { transform: translateY(-8px); box-shadow: 0 32px 70px -12px rgba(0, 0, 0, 0.78), 0 0 50px rgba(99, 102, 241, 0.22); }
 }
 
 .blank-icon {

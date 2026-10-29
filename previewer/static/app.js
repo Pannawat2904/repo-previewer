@@ -1377,12 +1377,12 @@ function setupCursorEffects() {
     height = canvas.height = window.innerHeight;
   });
 
-  const colors = ['#38bdf8', '#818cf8', '#c084fc', '#2dd4bf', '#60a5fa'];
+  const colors = ['#38bdf8', '#818cf8', '#c084fc', '#2dd4bf'];
   const particles = [];
   const trail = [];
   const ripples = [];
-  const MAX_TRAIL = 18;
-  const MAX_PARTICLES = 75;
+  const MAX_TRAIL = 14;
+  const MAX_PARTICLES = 35;
 
   let mouseX = -100;
   let mouseY = -100;
@@ -1390,8 +1390,23 @@ function setupCursorEffects() {
   let smoothY = -100;
   let lastX = -100;
   let lastY = -100;
+  let onBackground = false;
+  let spotlightAlpha = 0;
   let isActive = false;
   let animFrameId = null;
+
+  // ตรวจสอบว่าเมาส์อยู่บนพื้นที่ว่างพื้นหลังหรือไม่ (ไม่แสดงทับเมนู แถบรายชื่อ การ์ด หรือหน้าต่างงาน)
+  function isBackgroundTarget(target) {
+    if (!target || !target.closest) return false;
+    if (
+      target.closest(
+        '.top-nav, .sidebar, .blank-state, .student-bar, .note-bar, .tabs-header, .tab-pane, .modal-card, button, a, input, select, textarea, iframe'
+      )
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   function spawnParticle(x, y, vx, vy, sizeMultiplier = 1) {
     if (particles.length >= MAX_PARTICLES) {
@@ -1401,16 +1416,21 @@ function setupCursorEffects() {
     particles.push({
       x,
       y,
-      vx: vx + (Math.random() - 0.5) * 1.4,
-      vy: vy + (Math.random() - 0.5) * 1.4 - 0.25,
-      size: (Math.random() * 2.4 + 1.1) * sizeMultiplier,
-      alpha: 0.9,
-      decay: Math.random() * 0.022 + 0.016,
+      vx: vx + (Math.random() - 0.5) * 0.9,
+      vy: vy + (Math.random() - 0.5) * 0.9 - 0.15,
+      size: (Math.random() * 1.8 + 0.9) * sizeMultiplier,
+      alpha: 0.65,
+      decay: Math.random() * 0.02 + 0.015,
       color,
     });
   }
 
   window.addEventListener('mousemove', (e) => {
+    onBackground = isBackgroundTarget(e.target);
+    if (!onBackground) {
+      return;
+    }
+
     mouseX = e.clientX;
     mouseY = e.clientY;
 
@@ -1425,22 +1445,19 @@ function setupCursorEffects() {
     const dy = mouseY - lastY;
     const dist = Math.hypot(dx, dy);
 
-    trail.push({ x: mouseX, y: mouseY, alpha: 1.0 });
+    trail.push({ x: mouseX, y: mouseY, alpha: 0.85 });
     if (trail.length > MAX_TRAIL) {
       trail.shift();
     }
 
-    // สร้างละอองดาวตามความเร็วการลากเมาส์
-    if (dist > 4) {
-      const count = Math.min(Math.floor(dist / 12) + 1, 3);
-      for (let i = 0; i < count; i++) {
-        spawnParticle(
-          mouseX + (Math.random() - 0.5) * 6,
-          mouseY + (Math.random() - 0.5) * 6,
-          -dx * 0.04,
-          -dy * 0.04
-        );
-      }
+    // สร้างละอองดาวเบา ๆ เฉพาะเมื่อลากเมาส์บนพื้นหลัง
+    if (dist > 10) {
+      spawnParticle(
+        mouseX + (Math.random() - 0.5) * 6,
+        mouseY + (Math.random() - 0.5) * 6,
+        -dx * 0.025,
+        -dy * 0.025
+      );
       lastX = mouseX;
       lastY = mouseY;
     }
@@ -1452,25 +1469,27 @@ function setupCursorEffects() {
   });
 
   window.addEventListener('mousedown', (e) => {
+    if (!isBackgroundTarget(e.target)) return;
+
     const x = e.clientX;
-    mouseY = e.clientY;
+    const y = e.clientY;
     ripples.push({
       x,
-      y: e.clientY,
+      y,
       radius: 4,
-      maxRadius: 42,
-      alpha: 0.75,
+      maxRadius: 36,
+      alpha: 0.55,
     });
 
-    for (let i = 0; i < 10; i++) {
-      const angle = (Math.PI * 2 * i) / 10 + (Math.random() - 0.5) * 0.3;
-      const speed = Math.random() * 2.6 + 1.2;
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI * 2 * i) / 6 + (Math.random() - 0.5) * 0.3;
+      const speed = Math.random() * 1.8 + 0.8;
       spawnParticle(
         x,
-        e.clientY,
+        y,
         Math.cos(angle) * speed,
         Math.sin(angle) * speed,
-        1.25
+        1.1
       );
     }
 
@@ -1483,22 +1502,23 @@ function setupCursorEffects() {
   function renderLoop() {
     ctx.clearRect(0, 0, width, height);
 
-    // 1. วาดแสง Spotlight นุ่ม ๆ ตามเคอร์เซอร์
-    smoothX += (mouseX - smoothX) * 0.22;
-    smoothY += (mouseY - smoothY) * 0.22;
+    // 1. วาดแสง Spotlight นุ่ม ๆ เฉพาะเมื่ออยู่บนพื้นหลัง
+    smoothX += (mouseX - smoothX) * 0.18;
+    smoothY += (mouseY - smoothY) * 0.18;
+    spotlightAlpha += ((onBackground ? 1 : 0) - spotlightAlpha) * 0.12;
 
-    if (mouseX >= 0 && mouseY >= 0) {
-      const grad = ctx.createRadialGradient(smoothX, smoothY, 2, smoothX, smoothY, 130);
-      grad.addColorStop(0, 'rgba(56, 189, 248, 0.10)');
-      grad.addColorStop(0.45, 'rgba(129, 140, 248, 0.04)');
+    if (spotlightAlpha > 0.01 && mouseX >= 0 && mouseY >= 0) {
+      const grad = ctx.createRadialGradient(smoothX, smoothY, 2, smoothX, smoothY, 140);
+      grad.addColorStop(0, `rgba(56, 189, 248, ${0.09 * spotlightAlpha})`);
+      grad.addColorStop(0.5, `rgba(129, 140, 248, ${0.035 * spotlightAlpha})`);
       grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(smoothX, smoothY, 130, 0, Math.PI * 2);
+      ctx.arc(smoothX, smoothY, 140, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 2. วาดเส้นแสง Comet Trail ตามการลากเมาส์
+    // 2. วาดเส้นแสง Comet Trail ตามการลากเมาส์บนพื้นหลัง
     if (trail.length > 2) {
       for (let i = 1; i < trail.length; i++) {
         const p0 = trail[i - 1];
@@ -1507,17 +1527,17 @@ function setupCursorEffects() {
         ctx.beginPath();
         ctx.moveTo(p0.x, p0.y);
         ctx.lineTo(p1.x, p1.y);
-        ctx.strokeStyle = `rgba(56, 189, 248, ${ratio * p1.alpha * 0.48})`;
-        ctx.lineWidth = ratio * 3.5;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${ratio * p1.alpha * 0.35})`;
+        ctx.lineWidth = ratio * 2.5;
         ctx.lineCap = 'round';
         ctx.stroke();
-        p1.alpha *= 0.88;
+        p1.alpha *= 0.86;
       }
       if (trail[0] && trail[0].alpha < 0.05) {
         trail.shift();
       }
     } else if (trail.length > 0) {
-      trail[0].alpha *= 0.85;
+      trail[0].alpha *= 0.82;
       if (trail[0].alpha < 0.05) trail.shift();
     }
 
@@ -1526,8 +1546,8 @@ function setupCursorEffects() {
       const p = particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vx *= 0.97;
-      p.vy *= 0.97;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
       p.alpha -= p.decay;
 
       if (p.alpha <= 0) {
@@ -1539,17 +1559,17 @@ function setupCursorEffects() {
       ctx.globalAlpha = p.alpha;
       ctx.fillStyle = p.color;
       ctx.shadowColor = p.color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
 
-    // 4. วาดวงแหวนกระจายเมื่อคลิก (Click Ripple)
+    // 4. วาดวงแหวนกระจายเมื่อคลิกบนพื้นหลัง
     for (let i = ripples.length - 1; i >= 0; i--) {
       const r = ripples[i];
-      r.radius += (r.maxRadius - r.radius) * 0.16;
+      r.radius += (r.maxRadius - r.radius) * 0.15;
       r.alpha -= 0.035;
 
       if (r.alpha <= 0) {
@@ -1561,12 +1581,12 @@ function setupCursorEffects() {
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(56, 189, 248, ${r.alpha})`;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
       ctx.restore();
     }
 
-    if (particles.length > 0 || trail.length > 0 || ripples.length > 0) {
+    if (particles.length > 0 || trail.length > 0 || ripples.length > 0 || spotlightAlpha > 0.01) {
       animFrameId = requestAnimationFrame(renderLoop);
     } else {
       isActive = false;
