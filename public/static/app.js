@@ -1356,7 +1356,7 @@ function formatFileSize(bytes) {
 }
 
 // -------------------------------------------------------------
-// Interactive Mouse Trail, Spotlight & Sparkle Particles
+// Interactive Liquid Aurora & Constellation Network Background
 // -------------------------------------------------------------
 function setupCursorEffects() {
   const canvas = document.getElementById('cursorCanvas');
@@ -1369,33 +1369,22 @@ function setupCursorEffects() {
   }
 
   const ctx = canvas.getContext('2d');
-  let width = (canvas.width = window.innerWidth);
-  let height = (canvas.height = window.innerHeight);
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let width = window.innerWidth;
+  let height = window.innerHeight;
 
-  window.addEventListener('resize', () => {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-  });
+  function resizeCanvas() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
 
-  const colors = ['#38bdf8', '#818cf8', '#c084fc', '#2dd4bf'];
-  const particles = [];
-  const trail = [];
-  const ripples = [];
-  const MAX_TRAIL = 14;
-  const MAX_PARTICLES = 35;
-
-  let mouseX = -100;
-  let mouseY = -100;
-  let smoothX = -100;
-  let smoothY = -100;
-  let lastX = -100;
-  let lastY = -100;
-  let onBackground = false;
-  let spotlightAlpha = 0;
-  let isActive = false;
-  let animFrameId = null;
-
-  // ตรวจสอบว่าเมาส์อยู่บนพื้นที่ว่างพื้นหลังหรือไม่ (ไม่แสดงทับเมนู แถบรายชื่อ การ์ด หรือหน้าต่างงาน)
+  // ตรวจสอบว่าเมาส์อยู่บนพื้นที่ว่างพื้นหลังหรือไม่
   function isBackgroundTarget(target) {
     if (!target || !target.closest) return false;
     if (
@@ -1408,189 +1397,228 @@ function setupCursorEffects() {
     return true;
   }
 
-  function spawnParticle(x, y, vx, vy, sizeMultiplier = 1) {
-    if (particles.length >= MAX_PARTICLES) {
-      particles.shift();
-    }
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    particles.push({
-      x,
-      y,
-      vx: vx + (Math.random() - 0.5) * 0.9,
-      vy: vy + (Math.random() - 0.5) * 0.9 - 0.15,
-      size: (Math.random() * 1.8 + 0.9) * sizeMultiplier,
-      alpha: 0.65,
-      decay: Math.random() * 0.02 + 0.015,
-      color,
-    });
-  }
+  // สร้างโหนดดวงดาว (Constellation Nodes) ลอยอย่างนุ่มนวลในพื้นหลัง
+  const NODE_COUNT = 44;
+  const LINK_DIST = 135;
+  const MOUSE_DIST = 195;
+  const nodePalette = [
+    { r: 56, g: 189, b: 248 },  // Cyan
+    { r: 129, g: 140, b: 248 }, // Indigo
+    { r: 192, g: 132, b: 252 }, // Violet
+    { r: 45, g: 212, b: 191 },  // Teal
+  ];
+
+  const nodes = Array.from({ length: NODE_COUNT }, () => {
+    const c = nodePalette[Math.floor(Math.random() * nodePalette.length)];
+    return {
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.38,
+      vy: (Math.random() - 0.5) * 0.38,
+      radius: Math.random() * 1.4 + 1.0,
+      color: c,
+      phase: Math.random() * Math.PI * 2,
+    };
+  });
+
+  // กลุ่มก้อนแสง Liquid Aurora 3 ชั้นที่เคลื่อนตามเมาส์ด้วยความหน่วงต่างกัน (Silk Lag)
+  const auroraFollowers = [
+    { x: width * 0.5, y: height * 0.5, spring: 0.14, radius: 220, r: 56, g: 189, b: 248, maxAlpha: 0.11 },
+    { x: width * 0.5, y: height * 0.5, spring: 0.07, radius: 270, r: 99, g: 102, b: 241, maxAlpha: 0.09 },
+    { x: width * 0.5, y: height * 0.5, spring: 0.035, radius: 320, r: 168, g: 85, b: 247, maxAlpha: 0.07 },
+  ];
+
+  const pulses = [];
+  let mouseX = width * 0.5;
+  let mouseY = height * 0.5;
+  let smoothX = mouseX;
+  let smoothY = mouseY;
+  let onBackground = false;
+  let activeStrength = 0;
 
   window.addEventListener('mousemove', (e) => {
     onBackground = isBackgroundTarget(e.target);
-    if (!onBackground) {
-      return;
+    if (onBackground) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     }
+  });
 
-    mouseX = e.clientX;
-    mouseY = e.clientY;
-
-    if (smoothX < 0) {
-      smoothX = mouseX;
-      smoothY = mouseY;
-      lastX = mouseX;
-      lastY = mouseY;
-    }
-
-    const dx = mouseX - lastX;
-    const dy = mouseY - lastY;
-    const dist = Math.hypot(dx, dy);
-
-    trail.push({ x: mouseX, y: mouseY, alpha: 0.85 });
-    if (trail.length > MAX_TRAIL) {
-      trail.shift();
-    }
-
-    // สร้างละอองดาวเบา ๆ เฉพาะเมื่อลากเมาส์บนพื้นหลัง
-    if (dist > 10) {
-      spawnParticle(
-        mouseX + (Math.random() - 0.5) * 6,
-        mouseY + (Math.random() - 0.5) * 6,
-        -dx * 0.025,
-        -dy * 0.025
-      );
-      lastX = mouseX;
-      lastY = mouseY;
-    }
-
-    if (!isActive) {
-      isActive = true;
-      animFrameId = requestAnimationFrame(renderLoop);
-    }
+  window.addEventListener('mouseleave', () => {
+    onBackground = false;
   });
 
   window.addEventListener('mousedown', (e) => {
     if (!isBackgroundTarget(e.target)) return;
+    const clickX = e.clientX;
+    const clickY = e.clientY;
 
-    const x = e.clientX;
-    const y = e.clientY;
-    ripples.push({
-      x,
-      y,
-      radius: 4,
-      maxRadius: 36,
-      alpha: 0.55,
+    // สร้างคลื่นแสงนุ่ม ๆ และผลักโหนดรอบจุดคลิกเบา ๆ
+    pulses.push({ x: clickX, y: clickY, radius: 8, maxRadius: 210, alpha: 0.45 });
+    nodes.forEach((n) => {
+      const dx = n.x - clickX;
+      const dy = n.y - clickY;
+      const d = Math.hypot(dx, dy);
+      if (d > 0 && d < 200) {
+        const force = ((200 - d) / 200) * 1.6;
+        n.vx += (dx / d) * force;
+        n.vy += (dy / d) * force;
+      }
     });
-
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI * 2 * i) / 6 + (Math.random() - 0.5) * 0.3;
-      const speed = Math.random() * 1.8 + 0.8;
-      spawnParticle(
-        x,
-        y,
-        Math.cos(angle) * speed,
-        Math.sin(angle) * speed,
-        1.1
-      );
-    }
-
-    if (!isActive) {
-      isActive = true;
-      animFrameId = requestAnimationFrame(renderLoop);
-    }
   });
 
-  function renderLoop() {
+  function animate() {
     ctx.clearRect(0, 0, width, height);
 
-    // 1. วาดแสง Spotlight นุ่ม ๆ เฉพาะเมื่ออยู่บนพื้นหลัง
-    smoothX += (mouseX - smoothX) * 0.18;
-    smoothY += (mouseY - smoothY) * 0.18;
-    spotlightAlpha += ((onBackground ? 1 : 0) - spotlightAlpha) * 0.12;
+    // ค่อย ๆ เพิ่ม/ลดความสว่างของเอฟเฟกต์เมาส์อย่างสมูทเมื่อเข้า/ออกพื้นที่พื้นหลัง
+    const targetStrength = onBackground ? 1 : 0;
+    activeStrength += (targetStrength - activeStrength) * 0.08;
 
-    if (spotlightAlpha > 0.01 && mouseX >= 0 && mouseY >= 0) {
-      const grad = ctx.createRadialGradient(smoothX, smoothY, 2, smoothX, smoothY, 140);
-      grad.addColorStop(0, `rgba(56, 189, 248, ${0.09 * spotlightAlpha})`);
-      grad.addColorStop(0.5, `rgba(129, 140, 248, ${0.035 * spotlightAlpha})`);
-      grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(smoothX, smoothY, 140, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    smoothX += (mouseX - smoothX) * 0.16;
+    smoothY += (mouseY - smoothY) * 0.16;
 
-    // 2. วาดเส้นแสง Comet Trail ตามการลากเมาส์บนพื้นหลัง
-    if (trail.length > 2) {
-      for (let i = 1; i < trail.length; i++) {
-        const p0 = trail[i - 1];
-        const p1 = trail[i];
-        const ratio = i / trail.length;
+    // 1. วาดแสง Liquid Aurora Silk 3 ชั้นตามการลากเมาส์
+    if (activeStrength > 0.005) {
+      auroraFollowers.forEach((orb) => {
+        orb.x += (mouseX - orb.x) * orb.spring;
+        orb.y += (mouseY - orb.y) * orb.spring;
+
+        const alpha = orb.maxAlpha * activeStrength;
+        const grad = ctx.createRadialGradient(orb.x, orb.y, 4, orb.x, orb.y, orb.radius);
+        grad.addColorStop(0, `rgba(${orb.r}, ${orb.g}, ${orb.b}, ${alpha})`);
+        grad.addColorStop(0.5, `rgba(${orb.r}, ${orb.g}, ${orb.b}, ${alpha * 0.4})`);
+        grad.addColorStop(1, `rgba(${orb.r}, ${orb.g}, ${orb.b}, 0)`);
+
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.strokeStyle = `rgba(56, 189, 248, ${ratio * p1.alpha * 0.35})`;
-        ctx.lineWidth = ratio * 2.5;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-        p1.alpha *= 0.86;
-      }
-      if (trail[0] && trail[0].alpha < 0.05) {
-        trail.shift();
-      }
-    } else if (trail.length > 0) {
-      trail[0].alpha *= 0.82;
-      if (trail[0].alpha < 0.05) trail.shift();
+        ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
-    // 3. วาดละอองดาว (Sparkle Particles)
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vx *= 0.96;
-      p.vy *= 0.96;
-      p.alpha -= p.decay;
+    // 2. อัปเดตตำแหน่งโหนดและแรงดึงดูดกับเมาส์
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      n.phase += 0.02;
+      n.x += n.vx;
+      n.y += n.vy;
 
-      if (p.alpha <= 0) {
-        particles.splice(i, 1);
-        continue;
+      // ลดความเร็วส่วนเกินให้กลับสู่ความเร็วลอยตัวปกติ
+      const speed = Math.hypot(n.vx, n.vy);
+      if (speed > 0.45) {
+        n.vx *= 0.96;
+        n.vy *= 0.96;
       }
 
-      ctx.save();
-      ctx.globalAlpha = p.alpha;
-      ctx.fillStyle = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 6;
+      // วนกลับเมื่อชนขอบจอ
+      if (n.x < -20) n.x = width + 20;
+      else if (n.x > width + 20) n.x = -20;
+      if (n.y < -20) n.y = height + 20;
+      else if (n.y > height + 20) n.y = -20;
+
+      // แรงดึงดูดเบา ๆ เข้าหาเคอร์เซอร์เมื่อลากเมาส์บนพื้นหลัง
+      if (activeStrength > 0.05) {
+        const dx = smoothX - n.x;
+        const dy = smoothY - n.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 35 && dist < MOUSE_DIST) {
+          const pull = ((MOUSE_DIST - dist) / MOUSE_DIST) * 0.012 * activeStrength;
+          n.x += dx * pull;
+          n.y += dy * pull;
+        }
+      }
+    }
+
+    // 3. วาดเส้นเชื่อมระหว่างโหนดใกล้เคียง (Constellation Lines)
+    ctx.lineWidth = 0.75;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < LINK_DIST) {
+          const lineAlpha = (1 - dist / LINK_DIST) * 0.14;
+          ctx.strokeStyle = `rgba(148, 163, 184, ${lineAlpha})`;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 4. วาดเส้นใยแสงเชื่อมจากเมาส์ไปยังโหนดรอบ ๆ (Interactive Cursor Constellation)
+    if (activeStrength > 0.01) {
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        const dx = smoothX - n.x;
+        const dy = smoothY - n.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < MOUSE_DIST) {
+          const proximity = 1 - dist / MOUSE_DIST;
+          const lineAlpha = proximity * 0.42 * activeStrength;
+
+          const lineGrad = ctx.createLinearGradient(smoothX, smoothY, n.x, n.y);
+          lineGrad.addColorStop(0, `rgba(56, 189, 248, ${lineAlpha})`);
+          lineGrad.addColorStop(1, `rgba(${n.color.r}, ${n.color.g}, ${n.color.b}, ${lineAlpha * 0.25})`);
+
+          ctx.strokeStyle = lineGrad;
+          ctx.lineWidth = 0.8 + proximity * 0.9;
+          ctx.beginPath();
+          ctx.moveTo(smoothX, smoothY);
+          ctx.lineTo(n.x, n.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 5. วาดจุดดวงดาวแต่ละโหนด
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const dx = smoothX - n.x;
+      const dy = smoothY - n.y;
+      const dist = Math.hypot(dx, dy);
+      const boost = activeStrength > 0.01 && dist < MOUSE_DIST ? (1 - dist / MOUSE_DIST) * activeStrength : 0;
+
+      const twinkle = 0.35 + Math.sin(n.phase) * 0.15 + boost * 0.5;
+      const r = n.radius + boost * 1.4;
+
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${n.color.r}, ${n.color.g}, ${n.color.b}, ${Math.min(twinkle, 0.95)})`;
       ctx.fill();
-      ctx.restore();
+
+      if (boost > 0.2) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${n.color.r}, ${n.color.g}, ${n.color.b}, ${boost * 0.18})`;
+        ctx.fill();
+      }
     }
 
-    // 4. วาดวงแหวนกระจายเมื่อคลิกบนพื้นหลัง
-    for (let i = ripples.length - 1; i >= 0; i--) {
-      const r = ripples[i];
-      r.radius += (r.maxRadius - r.radius) * 0.15;
-      r.alpha -= 0.035;
+    // 6. วาดคลื่นวงแหวนเมื่อคลิกบนพื้นหลัง
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const p = pulses[i];
+      p.radius += (p.maxRadius - p.radius) * 0.08;
+      p.alpha *= 0.93;
 
-      if (r.alpha <= 0) {
-        ripples.splice(i, 1);
+      if (p.alpha < 0.01) {
+        pulses.splice(i, 1);
         continue;
       }
 
-      ctx.save();
       ctx.beginPath();
-      ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(56, 189, 248, ${r.alpha})`;
-      ctx.lineWidth = 1.4;
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${p.alpha})`;
+      ctx.lineWidth = 1.2;
       ctx.stroke();
-      ctx.restore();
     }
 
-    if (particles.length > 0 || trail.length > 0 || ripples.length > 0 || spotlightAlpha > 0.01) {
-      animFrameId = requestAnimationFrame(renderLoop);
-    } else {
-      isActive = false;
-      animFrameId = null;
-    }
+    requestAnimationFrame(animate);
   }
+
+  requestAnimationFrame(animate);
 }
