@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   setupIframeMessageListener();
   setupKeyboardShortcuts();
+  setupMobileSwipeGestures();
   setupCursorEffects();
 });
 
@@ -317,6 +318,39 @@ function closeMobileSidebar() {
   const backdrop = elements.sidebarBackdrop;
   if (sidebar) sidebar.classList.remove('mobile-open');
   if (backdrop) backdrop.classList.remove('visible');
+}
+
+function setupMobileSwipeGestures() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  window.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener('touchend', (e) => {
+    if (window.innerWidth > 860 || !e.changedTouches || e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+
+    // ต้องเป็นการปัดแนวนอนเป็นหลัก
+    if (Math.abs(dx) < 55 || dy > Math.abs(dx) * 0.7) return;
+
+    const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.contains('mobile-open');
+
+    if (!isOpen && touchStartX < 28 && dx > 60) {
+      // ปัดขวาจากขอบซ้ายจอเพื่อเปิดเมนูรายชื่อ
+      sidebar.classList.add('mobile-open');
+      if (elements.sidebarBackdrop) elements.sidebarBackdrop.classList.add('visible');
+    } else if (isOpen && dx < -55) {
+      // ปัดซ้ายเพื่อปิดเมนูรายชื่อ
+      closeMobileSidebar();
+    }
+  }, { passive: true });
 }
 
 // -------------------------------------------------------------
@@ -669,16 +703,19 @@ async function selectStudent(index) {
   const student = state.students[index];
 
   // ปิด Drawer บนหน้าจอมือถืออัตโนมัติเมื่อเลือกนักเรียน
-  if (window.innerWidth <= 860) {
+  const isMobile = window.innerWidth <= 860;
+  if (isMobile) {
     closeMobileSidebar();
   }
 
-  // อัปเดต UI ให้แสดง workspace พร้อมแอนิเมชันนุ่มนวล
+  // อัปเดต UI ให้แสดง workspace พร้อมแอนิเมชันนุ่มนวล (ข้ามการบังคับ reflow บนมือถือเพื่อให้สลับหน้าได้ทันที)
   elements.blankState.style.display = 'none';
   elements.studentWorkspace.style.display = 'flex';
-  elements.studentWorkspace.classList.remove('workspace-animate');
-  void elements.studentWorkspace.offsetWidth;
-  elements.studentWorkspace.classList.add('workspace-animate');
+  if (!isMobile) {
+    elements.studentWorkspace.classList.remove('workspace-animate');
+    void elements.studentWorkspace.offsetWidth;
+    elements.studentWorkspace.classList.add('workspace-animate');
+  }
 
   // Highlight active ใน sidebar
   document.querySelectorAll('.student-item').forEach((item, i) => {
@@ -688,7 +725,9 @@ async function selectStudent(index) {
   const activeCard = document.getElementById(safeId);
   if (activeCard) {
     activeCard.classList.add('active');
-    activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (!isMobile) {
+      activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   // Header Details

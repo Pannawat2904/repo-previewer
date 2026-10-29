@@ -65,6 +65,11 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, select, textarea, .student-item, .tab-btn, .device-btn {
+  touch-action: manipulation;
 }
 
 body {
@@ -74,8 +79,10 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   position: relative;
+  overscroll-behavior: none;
 }
 
 /* -------------------------------------------------------------
@@ -176,6 +183,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   position: relative;
   z-index: 1;
@@ -364,7 +372,9 @@ kbd {
 .main-container {
   display: flex;
   flex: 1;
+  min-height: 0;
   height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
   overflow: hidden;
   position: relative;
 }
@@ -1102,6 +1112,13 @@ kbd {
   color: var(--text-primary);
   font-size: 0.88rem;
   font-family: var(--font-main);
+}
+
+@media (max-width: 600px) {
+  .note-bar input,
+  .search-box input {
+    font-size: 16px; /* ป้องกัน iOS Safari ซูมหน้าจอเวลาแตะช่องค้นหาหรือช่องจดโน้ต */
+  }
 }
 
 .note-bar input::placeholder {
@@ -1965,91 +1982,155 @@ kbd {
 }
 
 @media (max-width: 860px) {
+  :root {
+    /* ลดภาระ GPU จาก backdrop-filter บนมือถือเพื่อให้เลื่อนจอและเปิดเมนูได้ 60fps ลื่นไหล */
+    --glass-blur: blur(10px);
+    --glass-blur-sm: blur(6px);
+  }
+
+  .aurora-orb,
+  .ambient-grid,
+  .brand-logo,
+  .brand-text h1,
+  .btn-primary::after,
+  .blank-icon,
+  .blank-icon::after {
+    animation: none !important;
+  }
+
+  .aurora-orb-3 {
+    display: none;
+  }
+
   .mobile-toggle-btn {
     display: inline-flex;
-    margin-right: 6px;
+    margin-right: 4px;
+    width: 36px;
+    height: 36px;
   }
 
   .mobile-close-btn {
-    display: inline-flex;
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
     color: var(--text-secondary);
-    font-size: 1.4rem;
-    padding: 0 4px;
+    font-size: 1.5rem;
+    width: 32px;
+    height: 32px;
+    padding: 0;
     cursor: pointer;
   }
 
-  .keyboard-tip {
-    display: none !important;
-  }
-
   .top-nav {
-    height: auto;
-    padding: 10px 14px;
-    flex-wrap: wrap;
-    gap: 10px;
+    height: 56px;
+    min-height: 56px;
+    padding: 0 12px;
+    flex-wrap: nowrap;
+    gap: 8px;
   }
 
   .header-actions {
-    overflow-x: auto;
-    padding-bottom: 2px;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
   }
 
   .main-container {
-    height: calc(100vh - 64px);
+    flex: 1;
+    height: auto;
+    min-height: 0;
     overflow: hidden;
   }
 
-  /* Sidebar transforms into an off-canvas drawer */
+  /* Sidebar transforms into an off-canvas hardware-accelerated drawer */
   .sidebar {
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
-    width: 320px;
-    max-width: 86vw;
+    width: 310px;
+    max-width: 85vw;
     height: 100vh;
+    height: 100dvh;
     z-index: 1000;
-    transform: translateX(-100%);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 0 50px rgba(0, 0, 0, 0.85);
-    border-right: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(10, 15, 28, 0.95);
+    transform: translate3d(-100%, 0, 0);
+    will-change: transform;
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.14);
+    background: #0b1120;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .sidebar.mobile-open {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.75);
+  }
+
+  .sidebar-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(2, 6, 16, 0.72);
+    transition: opacity 0.22s ease;
+  }
+
+  .students-list {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .student-item {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 30, 52, 0.85);
+    animation: none;
+    padding: 11px 12px;
+  }
+
+  .btn-remove-student {
+    width: 32px;
+    height: 32px;
+    opacity: 0.75;
   }
 
   .content-area {
     width: 100%;
     height: 100%;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  .blank-state {
+    margin: auto 14px;
+    padding: 28px 20px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(15, 23, 42, 0.92);
+  }
+
+  .blank-shortcuts {
+    display: none;
   }
 
   .student-workspace {
-    padding: 10px;
-    gap: 10px;
-    height: auto;
-    min-height: 100%;
-    overflow: visible;
+    padding: 8px;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .student-bar {
-    padding: 12px 14px;
-    gap: 12px;
+    padding: 8px 12px;
+    gap: 8px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(13, 20, 36, 0.92);
   }
 
   .student-name-row {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .student-meta-badges {
     flex-wrap: wrap;
     gap: 6px;
   }
@@ -2057,130 +2138,202 @@ kbd {
   .student-actions {
     width: 100%;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .note-bar {
+    padding: 6px 12px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(13, 20, 36, 0.85);
   }
 
   .tabs-header {
-    flex-direction: column;
-    align-items: stretch;
-    height: auto;
-    padding: 8px 10px;
-    gap: 8px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 4px 8px;
+    gap: 6px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(13, 20, 36, 0.92);
   }
 
   .tab-buttons {
-    width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 2px;
+    gap: 4px;
     -webkit-overflow-scrolling: touch;
   }
 
+  .tab-btn {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    gap: 5px;
+  }
+
   .tab-toolbar {
-    width: 100%;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
+    width: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .tab-pane {
+    flex: 1;
+    height: auto;
+    min-height: 0;
   }
 
   .iframe-container {
-    padding: 6px;
-    min-height: 480px;
+    padding: 0;
+    border-radius: var(--radius-md);
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .iframe-container iframe {
     max-width: 100%;
+    border-radius: var(--radius-md);
   }
 
   .code-layout {
     flex-direction: column;
-    height: 650px;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .file-tree-sidebar {
     width: 100%;
     min-width: 100%;
-    height: 170px;
-    max-height: 180px;
+    height: 140px;
+    max-height: 145px;
     border-right: none;
     border-bottom: var(--glass-border);
+  }
+
+  .file-tree-content {
+    -webkit-overflow-scrolling: touch;
   }
 
   .code-view-area {
     width: 100%;
     flex: 1;
+    min-height: 0;
+  }
+
+  .code-content-wrap {
+    -webkit-overflow-scrolling: touch;
   }
 
   .inspect-container {
-    padding: 10px 4px;
-    gap: 12px;
+    padding: 6px 2px;
+    gap: 10px;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
 @media (max-width: 600px) {
-  .top-nav {
-    padding: 8px 10px;
-    gap: 6px;
+  .brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .brand-logo {
+    padding: 6px;
+    flex-shrink: 0;
+  }
+
+  .brand-logo svg {
+    width: 18px;
+    height: 18px;
   }
 
   .brand-text h1 {
-    font-size: 1.02rem;
+    font-size: 0.95rem;
+    white-space: nowrap;
   }
 
-  .brand-subtitle {
+  .header-actions .btn-primary {
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    gap: 5px;
+  }
+
+  /* ซ่อนข้อความปุ่มรองบนจอมือถือเล็ก เหลือเฉพาะไอคอนที่กดง่าย ไม่ล้นบรรทัด */
+  .menu-group-btn {
+    padding: 6px 9px;
+  }
+
+  .menu-group-btn span {
     display: none;
   }
 
-  .header-actions {
-    gap: 6px;
-    width: 100%;
-    justify-content: flex-start;
+  #commitBadge {
+    display: none;
   }
 
-  .header-actions .btn {
-    padding: 6px 10px;
+  .student-name-row h2 {
+    font-size: 0.98rem;
+  }
+
+  .repo-link {
+    font-size: 0.74rem;
+    padding: 2px 8px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+  }
+
+  .custom-checkbox-label {
+    padding: 5px 10px;
+  }
+
+  .checkbox-text {
     font-size: 0.78rem;
   }
 
-  .header-actions .btn svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .student-bar {
-    padding: 10px 12px;
-  }
-
-  #activeStudentName {
-    font-size: 1.15rem;
-  }
-
-  .nav-btn-group .btn span {
+  /* ซ่อนปุ่มสลับขนาดจอ Desktop/Tablet/Mobile บนจอมือถือจริง เพื่อประหยัดพื้นที่ */
+  .device-switcher {
     display: none;
   }
 
-  .nav-btn-group .btn {
-    padding: 6px 10px;
-  }
-
-  .device-switcher {
-    padding: 2px;
-  }
-
-  .device-btn {
-    padding: 4px 8px;
-    font-size: 0.72rem;
+  .preview-actions .btn span {
+    display: none;
   }
 
   .preview-actions .btn {
-    padding: 5px 8px;
-    font-size: 0.75rem;
+    padding: 6px 8px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(4, 7, 16, 0.88);
   }
 
   .modal-card {
-    width: 95vw;
-    margin: 10px;
+    width: 100%;
+    margin: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #0e1526;
   }
 
   .modal-header {
@@ -2188,10 +2341,22 @@ kbd {
   }
 
   .modal-body {
-    padding: 16px;
+    padding: 14px 16px;
+  }
+
+  .modal-body textarea {
+    font-size: 16px; /* ป้องกัน iOS Safari ซูมหน้าจออัตโนมัติเวลาแตะช่องพิมพ์ */
   }
 
   .modal-footer {
     padding: 12px 16px;
+  }
+}
+
+@media (hover: none) {
+  .student-item:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover {
+    transform: none;
   }
 }
