@@ -549,10 +549,11 @@ function renderStudentsList() {
     return;
   }
 
-  filtered.forEach(student => {
+  filtered.forEach((student, idx) => {
     const originalIndex = state.students.indexOf(student);
     const itemEl = document.createElement('div');
     itemEl.className = `student-item ${originalIndex === state.currentIndex ? 'active' : ''}`;
+    itemEl.style.animationDelay = `${Math.min(idx * 35, 350)}ms`;
     itemEl.id = `student-card-${student.key.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
     // Status Dot Class
@@ -671,9 +672,12 @@ async function selectStudent(index) {
     closeMobileSidebar();
   }
 
-  // อัปเดต UI ให้แสดง workspace
+  // อัปเดต UI ให้แสดง workspace พร้อมแอนิเมชันนุ่มนวล
   elements.blankState.style.display = 'none';
   elements.studentWorkspace.style.display = 'flex';
+  elements.studentWorkspace.classList.remove('workspace-animate');
+  void elements.studentWorkspace.offsetWidth;
+  elements.studentWorkspace.classList.add('workspace-animate');
 
   // Highlight active ใน sidebar
   document.querySelectorAll('.student-item').forEach((item, i) => {
