@@ -114,6 +114,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     # XSS Protection
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    # ป้องกันเบราว์เซอร์จำไฟล์ UI เก่าหลังอัปเดตเวอร์ชันใหม่
+    if request.url.path in ("/", "/index.html", "/index.htm") or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 
 BASE_DIR = Path(__file__).resolve().parent

@@ -451,6 +451,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .sidebar-title-row {
@@ -548,6 +549,7 @@ kbd {
 
 .students-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
   display: flex;
@@ -574,6 +576,7 @@ kbd {
   user-select: none;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
   animation: cardSlideIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
@@ -803,6 +806,7 @@ kbd {
   padding: 10px 12px;
   border-top: var(--glass-border);
   background: rgba(13, 20, 36, 0.85);
+  flex-shrink: 0;
 }
 
 .sidebar-meta-badges {
@@ -823,6 +827,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .progress-bar-mini {
@@ -863,6 +868,8 @@ kbd {
    ------------------------------------------------------------- */
 .content-area {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   background: transparent;
   display: flex;
   flex-direction: column;
@@ -962,6 +969,8 @@ kbd {
 .student-workspace {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -1294,6 +1303,7 @@ kbd {
 .tab-pane {
   display: none;
   flex: 1;
+  min-height: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -1318,6 +1328,7 @@ kbd {
   align-items: center;
   gap: 18px;
   color: #fbbf24;
+  flex-shrink: 0;
 }
 
 .notice-banner svg {
@@ -1426,6 +1437,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .btn-text-sm {
@@ -1445,6 +1457,7 @@ kbd {
 
 .file-tree-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px;
   font-family: var(--font-code);
@@ -1464,6 +1477,7 @@ kbd {
   user-select: none;
   color: var(--text-secondary);
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .tree-node:hover {
@@ -1507,6 +1521,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .file-meta-info {
@@ -1525,6 +1540,7 @@ kbd {
 
 .code-content-wrap {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   position: relative;
   display: flex;
@@ -1593,8 +1609,10 @@ kbd {
    ------------------------------------------------------------- */
 .inspect-container {
   flex: 1;
+  min-height: 0;
+  height: 100%;
   overflow-y: auto;
-  padding: 18px;
+  padding: 24px 20px 48px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1610,13 +1628,14 @@ kbd {
   border: var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card), var(--glass-inner-glow);
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .inspect-card-header {
   padding: 14px 20px;
   background: rgba(255, 255, 255, 0.03);
   border-bottom: var(--glass-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1636,6 +1655,8 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
 .issue-item {
@@ -1648,6 +1669,7 @@ kbd {
   flex-direction: column;
   gap: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
 }
 
 .issue-item.warning {
