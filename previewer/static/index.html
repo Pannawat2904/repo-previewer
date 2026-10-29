@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261029-5">
+  <link rel="stylesheet" href="/static/app.css?v=20261029-6">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -106,14 +106,14 @@
               </svg>
               <span>โค้ด</span>
             </button>
-            <button class="tab-btn" data-tab="inspect" title="ข้อสังเกต (คีย์ลัด 3)">
+            <button class="tab-btn" data-tab="inspect" title="ตรวจการใช้ AI และข้อสังเกต (คีย์ลัด 3)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
                 <line x1="16" y1="13" x2="8" y2="13"></line>
                 <line x1="16" y1="17" x2="8" y2="17"></line>
               </svg>
-              <span>ข้อสังเกต</span>
+              <span>ตรวจ AI & ข้อสังเกต</span>
               <span id="inspectBadgeCount" class="tab-badge" style="display: none;">0</span>
             </button>
           </div>
@@ -251,6 +251,7 @@
         <div id="sidebarActiveMeta" class="sidebar-active-meta" style="display: none;">
           <div class="sidebar-meta-badges">
             <span id="hasWebBadge" class="badge badge-success">เว็บสถิต (HTML)</span>
+            <button type="button" id="aiRiskBadge" class="badge badge-ai-low" title="คลิกเพื่อดูรายละเอียดการวิเคราะห์โอกาสใช้ AI เขียนโค้ด">🤖 AI: รอผล...</button>
             <span id="commitBadge" class="badge badge-subtle">Commit: -</span>
           </div>
           <div class="note-bar">
@@ -503,6 +504,6 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261029-5"></script>
+  <script src="/static/app.js?v=20261029-6"></script>
 </body>
 </html>

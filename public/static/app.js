@@ -72,6 +72,7 @@ const elements = {
   activeRepoText: document.getElementById('activeRepoText'),
   commitBadge: document.getElementById('commitBadge'),
   hasWebBadge: document.getElementById('hasWebBadge'),
+  aiRiskBadge: document.getElementById('aiRiskBadge'),
   
   btnPrevStudent: document.getElementById('btnPrevStudent'),
   btnNextStudent: document.getElementById('btnNextStudent'),
@@ -525,6 +526,9 @@ function setupEventListeners() {
   if (elements.btnOpenCourseHub) {
     elements.btnOpenCourseHub.addEventListener('click', openCourseHub);
   }
+  if (elements.aiRiskBadge) {
+    elements.aiRiskBadge.addEventListener('click', () => switchTab('inspect'));
+  }
   const brandTitle = document.querySelector('.brand-text');
   if (brandTitle) {
     brandTitle.style.cursor = 'pointer';
@@ -814,12 +818,16 @@ function exportResultsToCsv() {
   const activeCourse = getActiveCourse();
   const courseTitle = activeCourse ? `${activeCourse.subject} - ${activeCourse.assignment}` : 'ทั่วไป';
 
-  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / Repository', 'ลิงก์ GitHub', 'ประเภทโปรเจกต์', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
+  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / Repository', 'ลิงก์ GitHub', 'ประเภทโปรเจกต์', 'โอกาสใช้ AI (%)', 'ผลประเมิน AI', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
   const rows = state.students.map((s, index) => {
     let projTypeText = '-';
     if (s.meta?.has_web || s.has_web) projTypeText = 'เว็บสถิต (HTML)';
     else if (s.meta?.has_python || s.has_python) projTypeText = 'Python / OOP';
     else if (s.status === 'ready') projTypeText = 'โค้ดทั่วไป';
+
+    const aiInfo = s.ai_analysis || (s.local_bundle && s.local_bundle.inspect && s.local_bundle.inspect.ai_analysis);
+    const aiScoreText = aiInfo && typeof aiInfo.ai_score === 'number' ? `${aiInfo.ai_score}%` : '-';
+    const aiLabelText = aiInfo && aiInfo.risk_label ? aiInfo.risk_label : '-';
 
     const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
     const commitSha = s.meta?.commit_hash ? s.meta.commit_hash.substring(0, 7) : (s.meta?.commit_sha ? s.meta.commit_sha.substring(0, 7) : '-');
@@ -832,6 +840,8 @@ function exportResultsToCsv() {
       `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : s.raw_input).replace(/"/g, '""')}"`,
       `"${(s.canonical_url || '').replace(/"/g, '""')}"`,
       `"${projTypeText}"`,
+      `"${aiScoreText}"`,
+      `"${aiLabelText.replace(/"/g, '""')}"`,
       `"${viewedText}"`,
       `"${noteText.replace(/"/g, '""')}"`,
       `"${commitSha}"`,
@@ -2225,7 +2235,10 @@ async function loadInspectForStudent(student) {
       state.inspectData = data;
       student.observations = data.observations || [];
       if (data.python_info) student.python_info = data.python_info;
+      if (data.ai_analysis) student.ai_analysis = data.ai_analysis;
+      updateAiRiskBadge(student);
       updateObservationsBadge(student);
+      syncActiveCourseState();
       if (state.activeTab === 'inspect') {
         renderInspectTab(student);
       }
@@ -2235,11 +2248,80 @@ async function loadInspectForStudent(student) {
   }
 }
 
+function updateAiRiskBadge(student) {
+  const badge = elements.aiRiskBadge || document.getElementById('aiRiskBadge');
+  if (!badge) return;
+
+  const ai = student && (student.ai_analysis || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.ai_analysis));
+  if (!ai || typeof ai.ai_score !== 'number') {
+    badge.className = 'badge badge-subtle';
+    badge.innerText = '🤖 AI: รอผล...';
+    return;
+  }
+
+  const score = ai.ai_score;
+  if (score >= 65) {
+    badge.className = 'badge badge-ai-high';
+    badge.innerText = `🤖 AI: ${score}% (สูง)`;
+  } else if (score >= 35) {
+    badge.className = 'badge badge-ai-medium';
+    badge.innerText = `🤖 AI: ${score}% (ปานกลาง)`;
+  } else {
+    badge.className = 'badge badge-ai-low';
+    badge.innerText = `🤖 AI: ${score}% (ต่ำ)`;
+  }
+}
+
+function computePeerSimilarities(currentStudent) {
+  const curAi = currentStudent && (currentStudent.ai_analysis || (currentStudent.local_bundle && currentStudent.local_bundle.inspect && currentStudent.local_bundle.inspect.ai_analysis));
+  const curTokens = (curAi && curAi.fingerprint) || [];
+  if (curTokens.length < 12) return [];
+
+  const buildCounts = (arr) => {
+    const map = {};
+    arr.forEach(t => {
+      map[t] = (map[t] || 0) + 1;
+    });
+    return map;
+  };
+
+  const curCounts = buildCounts(curTokens);
+  const matches = [];
+
+  state.students.forEach(other => {
+    if (!other || other.key === currentStudent.key) return;
+    const otherAi = other.ai_analysis || (other.local_bundle && other.local_bundle.inspect && other.local_bundle.inspect.ai_analysis);
+    const otherTokens = (otherAi && otherAi.fingerprint) || [];
+    if (otherTokens.length < 12) return;
+
+    const otherCounts = buildCounts(otherTokens);
+    let intersection = 0;
+    Object.keys(curCounts).forEach(k => {
+      if (otherCounts[k]) {
+        intersection += Math.min(curCounts[k], otherCounts[k]);
+      }
+    });
+
+    const diceSim = Math.round((2 * intersection * 100) / (curTokens.length + otherTokens.length));
+    if (diceSim >= 65) {
+      matches.push({
+        student_name: other.student_name,
+        repo: other.owner ? `${other.owner}/${other.repo}` : other.raw_input,
+        similarity: diceSim,
+      });
+    }
+  });
+
+  return matches.sort((a, b) => b.similarity - a.similarity).slice(0, 4);
+}
+
 function updateObservationsBadge(student) {
   const missingCount = (student.observations || []).filter(o => o.category === 'missing_file' || o.category === 'python_syntax').length;
   const consoleErrCount = (student.console_logs || []).filter(l => l.type === 'error').length;
   const netErrCount = (student.network_errors || []).length;
-  const totalIssues = missingCount + consoleErrCount + netErrCount;
+  const ai = student && (student.ai_analysis || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.ai_analysis));
+  const aiFlag = ai && ai.ai_score >= 65 ? 1 : 0;
+  const totalIssues = missingCount + consoleErrCount + netErrCount + aiFlag;
 
   if (totalIssues > 0) {
     elements.inspectBadgeCount.style.display = 'inline-block';
@@ -2667,7 +2749,131 @@ function renderInspectTab(student) {
   const consoleLogs = student.console_logs || [];
   const networkErrors = student.network_errors || [];
 
-  // 0. หากเป็นโปรเจกต์ Python / OOP ให้แสดงการ์ดวิเคราะห์โครงสร้าง OOP ด้านบนสุด
+  // 0. การ์ดวิเคราะห์โอกาสใช้ AI เขียนโค้ด & ตรวจความคล้ายคลึงกับเพื่อนในห้อง (AI Code & Plagiarism Inspector)
+  const aiInfo = student.ai_analysis || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.ai_analysis);
+  if (aiInfo) {
+    const score = aiInfo.ai_score || 0;
+    const riskClass = score >= 65 ? 'ai-risk-high' : (score >= 35 ? 'ai-risk-medium' : 'ai-risk-low');
+    const breakdown = aiInfo.breakdown || { comment_style: 0, advanced_syntax: 0, ai_boilerplate: 0 };
+    const signals = aiInfo.signals || [];
+    const vivaQuestions = aiInfo.viva_questions || [];
+    const peerMatches = computePeerSimilarities(student);
+
+    const aiCard = document.createElement('div');
+    aiCard.className = `inspect-card ai-inspector-card ${riskClass}`;
+    aiCard.innerHTML = `
+      <div class="inspect-card-header">
+        <div class="inspect-card-title">
+          <span>🤖</span>
+          <span>วิเคราะห์โอกาสใช้ AI เขียนโค้ด & ความคล้ายคลึง (AI Code & Plagiarism Inspector)</span>
+        </div>
+        <span class="badge ${score >= 65 ? 'badge-ai-high' : (score >= 35 ? 'badge-ai-medium' : 'badge-ai-low')}">
+          ${escapeHtml(aiInfo.risk_label || 'ประเมินผล')} (${score}%)
+        </span>
+      </div>
+      <div class="inspect-card-body">
+        <div class="ai-overview-grid">
+          <div class="ai-score-circle-box ${riskClass}">
+            <div class="ai-score-number">${score}%</div>
+            <div class="ai-score-caption">โอกาสใช้ AI</div>
+          </div>
+
+          <div class="ai-breakdown-col">
+            <p class="ai-summary-text">${escapeHtml(aiInfo.summary || '')}</p>
+            <div class="ai-meters-list">
+              <div class="ai-meter-row">
+                <div class="ai-meter-label">
+                  <span>💬 สไตล์คอมเมนต์และ Docstring แบบตำรา AI</span>
+                  <strong>${breakdown.comment_style || 0}%</strong>
+                </div>
+                <div class="ai-meter-track"><div class="ai-meter-fill" style="width: ${breakdown.comment_style || 0}%;"></div></div>
+              </div>
+              <div class="ai-meter-row">
+                <div class="ai-meter-label">
+                  <span>⚡ ไวยากรณ์/ฟีเจอร์ขั้นสูงเกินระดับพื้นฐาน (Type Hints, Decorators, API)</span>
+                  <strong>${breakdown.advanced_syntax || 0}%</strong>
+                </div>
+                <div class="ai-meter-track"><div class="ai-meter-fill" style="width: ${breakdown.advanced_syntax || 0}%;"></div></div>
+              </div>
+              <div class="ai-meter-row">
+                <div class="ai-meter-label">
+                  <span>📋 โครงสร้างแม่พิมพ์และคำจำลองมาตรฐาน AI (Boilerplate / Placeholders)</span>
+                  <strong>${breakdown.ai_boilerplate || 0}%</strong>
+                </div>
+                <div class="ai-meter-track"><div class="ai-meter-fill" style="width: ${breakdown.ai_boilerplate || 0}%;"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${
+          peerMatches.length > 0
+            ? `
+              <div class="ai-peer-alert-box">
+                <div class="ai-section-subtitle">👥 ตรวจพบความคล้ายคลึงของโครงสร้างโค้ดกับเพื่อนในวิชาเดียวกัน</div>
+                <div class="ai-peer-list">
+                  ${peerMatches.map(m => `
+                    <div class="ai-peer-item">
+                      <span>⚠️ โครงสร้างโค้ดคล้ายกับของ <strong>${escapeHtml(m.student_name)}</strong> (${escapeHtml(m.repo)})</span>
+                      <span class="badge badge-ai-high">คล้ายกัน ${m.similarity}%</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="ai-signals-section">
+          <div class="ai-section-subtitle">🔍 จุดสังเกตและหลักฐานในโค้ดที่ตรวจพบ (${signals.length} รายการ)</div>
+          ${
+            signals.length === 0
+              ? `<p style="color: var(--color-success); font-size: 0.84rem;">✓ ไม่พบแพทเทิร์นคอมเมนต์หรือโครงสร้างแม่พิมพ์ที่ชัดเจนจาก AI</p>`
+              : `<div class="ai-signals-list">
+                  ${signals.map(sig => `
+                    <div class="ai-signal-item">
+                      <div class="ai-signal-head">
+                        <span class="ai-signal-title">${escapeHtml(sig.title)}</span>
+                        <button type="button" class="btn-open-signal-file" data-file="${escapeHtml(sig.file)}">
+                          📄 ${escapeHtml(sig.file)}:${sig.lineno || 1}
+                        </button>
+                      </div>
+                      ${sig.snippet ? `<code class="ai-signal-snippet">${escapeHtml(sig.snippet)}</code>` : ''}
+                    </div>
+                  `).join('')}
+                </div>`
+          }
+        </div>
+
+        ${
+          vivaQuestions.length > 0
+            ? `
+              <div class="ai-viva-box">
+                <div class="ai-section-subtitle">🎤 คำถามแนะนำสำหรับครูใช้ถามสอบปากเปล่านักเรียน (สร้างจากโค้ดของนักเรียนคนนี้)</div>
+                <ol class="ai-viva-list">
+                  ${vivaQuestions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}
+                </ol>
+              </div>
+            `
+            : ''
+        }
+      </div>
+    `;
+
+    aiCard.querySelectorAll('.btn-open-signal-file').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetFile = btn.dataset.file;
+        if (targetFile) {
+          switchTab('code');
+          openFileContent(student.owner, student.repo, targetFile);
+        }
+      });
+    });
+
+    container.appendChild(aiCard);
+  }
+
+  // 0.5 หากเป็นโปรเจกต์ Python / OOP ให้แสดงการ์ดวิเคราะห์โครงสร้าง OOP ด้านบนสุด
   const pyInfo = student.python_info || (student.local_bundle && student.local_bundle.python_info);
   if (pyInfo && pyInfo.has_python) {
     const oopSum = pyInfo.oop_summary || {};

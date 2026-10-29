@@ -125,6 +125,38 @@ print(s1.show_info())
         item = data["items"][0]
         self.assertTrue(item["has_python"])
         self.assertEqual(item["python_info"]["oop_summary"]["total_classes"], 1)
+        self.assertIn("ai_analysis", item["local_bundle"]["inspect"])
+
+    def test_ai_detector_signals(self):
+        ai_like_code = '''
+# Step 1: Define the base class
+class Employee:
+    """
+    Base class representing an employee.
+    Args:
+        name (str): Employee name
+    """
+    def __init__(self, name: str, salary: float) -> None:
+        self.name = name
+        self.salary = salary
+
+    @property
+    def annual_salary(self) -> float:
+        return self.salary * 12
+
+# Example usage:
+if __name__ == "__main__":
+    emp = Employee("John Doe", 50000.0)
+    print("-" * 40)
+    print(emp.annual_salary)
+'''
+        (self.temp_dir / "main.py").write_text(ai_like_code, encoding="utf-8")
+        res = inspect_repository(self.temp_dir)
+        ai_info = res["ai_analysis"]
+        self.assertGreaterEqual(ai_info["ai_score"], 65)
+        self.assertEqual(ai_info["risk_level"], "high")
+        self.assertTrue(len(ai_info["signals"]) >= 4)
+        self.assertTrue(len(ai_info["viva_questions"]) >= 1)
 
 
 if __name__ == "__main__":

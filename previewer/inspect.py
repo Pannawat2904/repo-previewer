@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import unquote, urlparse
 
+from previewer.ai_detector import analyze_repository_ai_usage
 from previewer.python_inspector import inspect_python_project
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,9 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
         except Exception:
             pass
 
-    # 1.5 ตรวจสอบไฟล์ Python / OOP (.py, .ipynb)
+    # 1.5 ตรวจสอบไฟล์ Python / OOP (.py, .ipynb) และวิเคราะห์โอกาสใช้ AI เขียนโค้ด
     python_info = inspect_python_project(repo_dir)
+    ai_analysis = analyze_repository_ai_usage(repo_dir)
     if python_info.get("has_python"):
         for pyf in python_info.get("files", []):
             analysis = pyf.get("analysis", {})
@@ -139,6 +141,7 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
             "has_web": False,
             "has_python": python_info.get("has_python", False),
             "python_info": python_info,
+            "ai_analysis": ai_analysis,
             "observations": observations,
             "meta": meta_info,
         }
@@ -163,6 +166,7 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
             "has_web": True,
             "has_python": python_info.get("has_python", False),
             "python_info": python_info,
+            "ai_analysis": ai_analysis,
             "observations": observations,
             "meta": meta_info,
         }
@@ -228,6 +232,7 @@ def inspect_repository(repo_dir: Path, original_url: str = "") -> dict:
         "has_web": True,
         "has_python": python_info.get("has_python", False),
         "python_info": python_info,
+        "ai_analysis": ai_analysis,
         "observations": observations,
         "meta": meta_info,
     }
