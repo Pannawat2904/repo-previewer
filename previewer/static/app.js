@@ -32,7 +32,6 @@ const elements = {
   activeRepoLink: document.getElementById('activeRepoLink'),
   activeRepoText: document.getElementById('activeRepoText'),
   commitBadge: document.getElementById('commitBadge'),
-  cacheBadge: document.getElementById('cacheBadge'),
   hasWebBadge: document.getElementById('hasWebBadge'),
   
   btnPrevStudent: document.getElementById('btnPrevStudent'),
@@ -40,7 +39,6 @@ const elements = {
   navCounterText: document.getElementById('navCounterText'),
   checkViewed: document.getElementById('checkViewed'),
   btnReloadCurrentRepo: document.getElementById('btnReloadCurrentRepo'),
-  btnDeleteCurrentRepo: document.getElementById('btnDeleteCurrentRepo'),
   studentNoteInput: document.getElementById('studentNoteInput'),
   noteSaveIndicator: document.getElementById('noteSaveIndicator'),
   
@@ -62,7 +60,6 @@ const elements = {
   deviceButtons: document.querySelectorAll('.device-btn'),
   iframeContainer: document.getElementById('iframeContainer'),
   previewIframe: document.getElementById('previewIframe'),
-  btnReloadIframe: document.getElementById('btnReloadIframe'),
   btnOpenExternal: document.getElementById('btnOpenExternal'),
   noWebNotice: document.getElementById('noWebNotice'),
   btnSwitchToCode: document.getElementById('btnSwitchToCode'),
@@ -79,25 +76,14 @@ const elements = {
   
   inputModal: document.getElementById('inputModal'),
   btnOpenInputModal: document.getElementById('btnOpenInputModal'),
-  btnBlankImport: document.getElementById('btnBlankImport'),
-  btnBlankLoadSample: document.getElementById('btnBlankLoadSample'),
-  btnEmptyPromptAdd: document.getElementById('btnEmptyPromptAdd'),
   btnCloseModal: document.getElementById('btnCloseModal'),
   btnCancelModal: document.getElementById('btnCancelModal'),
   bulkLinksTextarea: document.getElementById('bulkLinksTextarea'),
   parsedStatsLabel: document.getElementById('parsedStatsLabel'),
-  btnFillSampleLinks: document.getElementById('btnFillSampleLinks'),
   btnStartFetch: document.getElementById('btnStartFetch'),
   btnClearAllCache: document.getElementById('btnClearAllCache'),
   btnExportCsv: document.getElementById('btnExportCsv'),
 };
-
-// Sample test link data with realistic student submissions
-const SAMPLE_LINKS = `ปัฐวิกาณ (ลูกปัด)\thttps://github.com/patvikan24-oss/my-profil-013
-สัญหณัฐ (029)\thttps://github.com/sanhanut200419-cmd/my-profile-029
-พงศธร (045)\thttps://github.com/Pongsatorn045/My-profile-045
-ธารณิดา (006)\thttps://github.com/tharanida006/my-profile-006
-สมชาย เข็มกลัด\thttps://github.com/torvalds/subsurface-for-dirk`;
 
 // -------------------------------------------------------------
 // Initialization
@@ -111,26 +97,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupEventListeners() {
   // Modal toggling
   elements.btnOpenInputModal.addEventListener('click', openModal);
-  if (elements.btnBlankImport) elements.btnBlankImport.addEventListener('click', openModal);
-  if (elements.btnEmptyPromptAdd) elements.btnEmptyPromptAdd.addEventListener('click', openModal);
   elements.btnCloseModal.addEventListener('click', closeModal);
   elements.btnCancelModal.addEventListener('click', closeModal);
   elements.inputModal.addEventListener('click', (e) => {
     if (e.target === elements.inputModal) closeModal();
   });
-
-  // Sample links fill
-  elements.btnFillSampleLinks.addEventListener('click', () => {
-    elements.bulkLinksTextarea.value = SAMPLE_LINKS;
-    updateParsedStats();
-  });
-  if (elements.btnBlankLoadSample) {
-    elements.btnBlankLoadSample.addEventListener('click', () => {
-      openModal();
-      elements.bulkLinksTextarea.value = SAMPLE_LINKS;
-      updateParsedStats();
-    });
-  }
 
   // Textarea input monitoring
   elements.bulkLinksTextarea.addEventListener('input', updateParsedStats);
@@ -189,13 +160,8 @@ function setupEventListeners() {
     }
   });
 
-  // Reload & Delete current repo
+  // Reload current repo & preview
   elements.btnReloadCurrentRepo.addEventListener('click', handleReloadCurrentRepo);
-  if (elements.btnDeleteCurrentRepo) {
-    elements.btnDeleteCurrentRepo.addEventListener('click', () => {
-      handleDeleteStudent(state.currentIndex);
-    });
-  }
 
   // Tabs switching
   elements.tabButtons.forEach(btn => {
@@ -216,14 +182,7 @@ function setupEventListeners() {
   // ตั้งค่าโหมดเริ่มต้นเป็น Desktop ทันทีเมื่อเปิดระบบ เพื่อให้ Iframe ขยายเต็มจอ 100% ตั้งแต่แรก
   setDeviceMode(state.deviceMode || 'desktop');
 
-  // Iframe actions
-  elements.btnReloadIframe.addEventListener('click', () => {
-    const cur = getCurrentStudent();
-    if (cur && cur.preview_url) {
-      elements.previewIframe.src = cur.preview_url;
-    }
-  });
-
+  // Open preview in external tab
   elements.btnOpenExternal.addEventListener('click', () => {
     const cur = getCurrentStudent();
     if (cur && cur.preview_url) {
@@ -579,11 +538,9 @@ function renderStudentsList() {
   if (state.students.length === 0) {
     list.innerHTML = `
       <div class="empty-list-notice">
-        <p>ยังไม่มีรายการงาน</p>
-        <button class="btn btn-sm btn-outline" id="btnEmptyAdd">วางลิงก์เพื่อเริ่มตรวจ</button>
+        <p>ยังไม่มีรายชื่อนักเรียน</p>
       </div>
     `;
-    document.getElementById('btnEmptyAdd').addEventListener('click', openModal);
     return;
   }
 

@@ -200,20 +200,51 @@ body::after {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.keyboard-tip {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.header-menu-group {
+  display: inline-flex;
+  align-items: center;
   background: rgba(255, 255, 255, 0.04);
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  border: var(--glass-border-subtle);
+  border: var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 3px;
   backdrop-filter: var(--glass-blur-sm);
-  display: flex;
+}
+
+.menu-group-btn {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-main);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.menu-group-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.menu-group-btn.menu-btn-danger:hover {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.menu-group-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 2px;
 }
 
 kbd {
@@ -665,12 +696,12 @@ kbd {
 .blank-state {
   margin: auto;
   text-align: center;
-  max-width: 540px;
-  padding: 48px 24px;
+  max-width: 480px;
+  padding: 36px 28px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -682,30 +713,48 @@ kbd {
 
 .blank-icon {
   color: var(--accent-cyan);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.15));
-  padding: 26px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.12));
+  padding: 20px;
   border-radius: 50%;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  box-shadow: 0 0 35px rgba(56, 189, 248, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 28px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .blank-state h2 {
-  font-size: 1.5rem;
-  font-weight: 800;
+  font-size: 1.25rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
 .blank-state p {
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   line-height: 1.6;
 }
 
-.blank-actions {
+.blank-state p strong {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.blank-shortcuts {
   display: flex;
-  gap: 14px;
-  margin-top: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: var(--glass-border-subtle);
+  width: 100%;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.blank-shortcuts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* -------------------------------------------------------------
@@ -716,8 +765,8 @@ kbd {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  padding: 12px 18px 18px 18px;
-  gap: 12px;
+  padding: 10px 16px 14px 16px;
+  gap: 8px;
 }
 
 /* Top Student Bar (Liquid Glass Card) */
@@ -726,30 +775,30 @@ kbd {
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: var(--glass-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-card), var(--glass-inner-glow);
-  padding: 14px 20px;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .student-info {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
 }
 
 .student-name-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .student-name-row h2 {
-  font-size: 1.22rem;
+  font-size: 1.08rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
