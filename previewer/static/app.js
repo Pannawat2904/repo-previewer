@@ -27,6 +27,8 @@ const elements = {
   
   blankState: document.getElementById('blankState'),
   studentWorkspace: document.getElementById('studentWorkspace'),
+  topWorkspaceBar: document.getElementById('topWorkspaceBar'),
+  sidebarActiveMeta: document.getElementById('sidebarActiveMeta'),
   
   activeStudentName: document.getElementById('activeStudentName'),
   activeRepoLink: document.getElementById('activeRepoLink'),
@@ -243,6 +245,9 @@ function setupKeyboardShortcuts() {
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       handleReloadCurrentRepo();
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      toggleMobileSidebar();
     }
   });
 }
@@ -711,6 +716,8 @@ async function selectStudent(index) {
   // อัปเดต UI ให้แสดง workspace พร้อมแอนิเมชันนุ่มนวล (ข้ามการบังคับ reflow บนมือถือเพื่อให้สลับหน้าได้ทันที)
   elements.blankState.style.display = 'none';
   elements.studentWorkspace.style.display = 'flex';
+  if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'flex';
+  if (elements.sidebarActiveMeta) elements.sidebarActiveMeta.style.display = 'flex';
   if (!isMobile) {
     elements.studentWorkspace.classList.remove('workspace-animate');
     void elements.studentWorkspace.offsetWidth;
@@ -983,6 +990,8 @@ async function handleDeleteStudent(index) {
   if (state.students.length === 0) {
     state.currentIndex = -1;
     elements.studentWorkspace.style.display = 'none';
+    if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'none';
+    if (elements.sidebarActiveMeta) elements.sidebarActiveMeta.style.display = 'none';
     elements.blankState.style.display = 'flex';
     if (elements.previewIframe) elements.previewIframe.src = 'about:blank';
     renderStudentsList();
@@ -1038,6 +1047,8 @@ async function handleClearAllCache() {
     renderStudentsList();
     updateViewedStats();
     elements.studentWorkspace.style.display = 'none';
+    if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'none';
+    if (elements.sidebarActiveMeta) elements.sidebarActiveMeta.style.display = 'none';
     elements.blankState.style.display = 'flex';
     if (elements.previewIframe) elements.previewIframe.src = 'about:blank';
   } catch (err) {
