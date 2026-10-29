@@ -9,6 +9,7 @@ from previewer.fetch import (
     safe_extract_zip,
     FetchError,
     clear_all_cache,
+    delete_repo_cache,
     is_repo_cached,
 )
 
@@ -62,6 +63,25 @@ class TestFetch(unittest.TestCase):
         deleted = clear_all_cache(cache_dir)
         self.assertEqual(deleted, 2)
         self.assertFalse(is_repo_cached("user", "repo1", cache_dir))
+
+    def test_delete_single_repo_cache(self):
+        cache_dir = self.temp_dir / "cache"
+        repo1 = cache_dir / "user_repo1"
+        repo1.mkdir(parents=True)
+        (repo1 / ".repo_meta.json").write_text("{}", encoding="utf-8")
+
+        repo2 = cache_dir / "user_repo2"
+        repo2.mkdir(parents=True)
+        (repo2 / ".repo_meta.json").write_text("{}", encoding="utf-8")
+
+        self.assertTrue(is_repo_cached("user", "repo1", cache_dir))
+        self.assertTrue(is_repo_cached("user", "repo2", cache_dir))
+
+        res = delete_repo_cache("user", "repo1", cache_dir)
+        self.assertTrue(res)
+        self.assertFalse(is_repo_cached("user", "repo1", cache_dir))
+        self.assertTrue(is_repo_cached("user", "repo2", cache_dir))
+        self.assertFalse(delete_repo_cache("user", "repo1", cache_dir))
 
 
 if __name__ == "__main__":

@@ -69,6 +69,10 @@ class TestSecurity(unittest.TestCase):
         owner2, repo2, err2 = normalize_github_url("https://github.com/evil;rm-rf/test")
         self.assertIsNotNone(err2)
 
+        res3 = self.client.post("/api/cache/delete", json={"owner": "../evil", "repo": "repo"})
+        self.assertEqual(res3.status_code, 200)
+        self.assertFalse(res3.json().get("deleted"))
+
     def test_zip_slip_protection(self):
         """ทดสอบว่า safe_extract_zip บล็อกไฟล์ที่มี Path Traversal (Zip-Slip)"""
         buf = io.BytesIO()

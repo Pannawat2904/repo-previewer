@@ -40,6 +40,7 @@ const elements = {
   navCounterText: document.getElementById('navCounterText'),
   checkViewed: document.getElementById('checkViewed'),
   btnReloadCurrentRepo: document.getElementById('btnReloadCurrentRepo'),
+  btnDeleteCurrentRepo: document.getElementById('btnDeleteCurrentRepo'),
   studentNoteInput: document.getElementById('studentNoteInput'),
   noteSaveIndicator: document.getElementById('noteSaveIndicator'),
   
@@ -188,8 +189,13 @@ function setupEventListeners() {
     }
   });
 
-  // Reload current repo
+  // Reload & Delete current repo
   elements.btnReloadCurrentRepo.addEventListener('click', handleReloadCurrentRepo);
+  if (elements.btnDeleteCurrentRepo) {
+    elements.btnDeleteCurrentRepo.addEventListener('click', () => {
+      handleDeleteStudent(state.currentIndex);
+    });
+  }
 
   // Tabs switching
   elements.tabButtons.forEach(btn => {
@@ -275,7 +281,7 @@ function setupKeyboardShortcuts() {
       switchTab('inspect');
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
-      reloadCurrentRepo();
+      handleReloadCurrentRepo();
     }
   });
 }
@@ -618,12 +624,21 @@ function renderStudentsList() {
       </div>
       <div class="student-item-right">
         <div class="status-dot ${dotClass}" title="${escapeHtml(statusTitle)}"></div>
+        <button type="button" class="btn-remove-student" title="ลบรายการคนนี้ออก" aria-label="ลบรายการคนนี้ออก">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
       </div>
     `;
 
     // Click on item to select student
     itemEl.addEventListener('click', (e) => {
-      if (e.target.classList.contains('student-item-checkbox')) {
+      if (e.target.closest('.btn-remove-student')) {
+        e.stopPropagation();
+        handleDeleteStudent(originalIndex);
+      } else if (e.target.classList.contains('student-item-checkbox')) {
         e.stopPropagation();
         handleViewedToggle(originalIndex, !student.viewed);
       } else {
@@ -949,6 +964,60 @@ async function handleReloadCurrentRepo() {
   }
 }
 
+async function handleDeleteStudent(index) {
+  if (index < 0 || index >= state.students.length) return;
+  const student = state.students[index];
+  student._deleted = true;
+
+  // 1. ลบออกจากรายการใน state
+  state.students.splice(index, 1);
+
+  // 2. อัปเดตข้อความในช่องนำเข้าลิงก์ให้ตรงกับรายการที่เหลืออยู่
+  if (elements.bulkLinksTextarea) {
+    elements.bulkLinksTextarea.value = state.students.map(s => s.raw_input).join('\n');
+    updateParsedStats();
+  }
+
+  // 3. ปรับปรุงรายการที่กำลังเลือกดูอยู่ (currentIndex) และอัปเดต UI
+  if (state.students.length === 0) {
+    state.currentIndex = -1;
+    elements.studentWorkspace.style.display = 'none';
+    elements.blankState.style.display = 'flex';
+    if (elements.previewIframe) elements.previewIframe.src = 'about:blank';
+    renderStudentsList();
+    updateViewedStats();
+  } else if (index === state.currentIndex) {
+    const nextIdx = Math.min(index, state.students.length - 1);
+    renderStudentsList();
+    updateViewedStats();
+    selectStudent(nextIdx);
+  } else {
+    if (index < state.currentIndex) {
+      state.currentIndex -= 1;
+    }
+    elements.navCounterText.innerText = `${state.currentIndex + 1} / ${state.students.length}`;
+    renderStudentsList();
+    updateViewedStats();
+  }
+
+  // 4. ส่งคำสั่งลบแคชและปิดเซิร์ฟเวอร์ของ repo รายบุคคลไปยัง Backend
+  const stillUsed = state.students.some(s => s.key === student.key);
+  if (student.owner && student.repo && !stillUsed) {
+    try {
+      await fetch('/api/cache/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: student.owner,
+          repo: student.repo,
+        }),
+      });
+    } catch (err) {
+      console.error('Error deleting single repo cache:', err);
+    }
+  }
+}
+
 async function handleClearAllCache() {
   if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างแคชไฟล์ repository ทั้งหมดในเครื่อง?')) {
     return;
@@ -958,14 +1027,18 @@ async function handleClearAllCache() {
     const res = await fetch('/api/cache/clear', { method: 'POST' });
     const data = await res.json();
     alert(`ล้างแคชเรียบร้อยแล้ว (ลบ ${data.deleted_repos_count} repos)`);
-    // รีเฟรชสถานะ students
-    state.students.forEach(s => {
-      s.status = 'pending';
-    });
+    // ล้างรายการทั้งหมดและรีเซ็ตหน้าจอ
+    state.students = [];
+    state.currentIndex = -1;
+    if (elements.bulkLinksTextarea) {
+      elements.bulkLinksTextarea.value = '';
+      updateParsedStats();
+    }
     renderStudentsList();
+    updateViewedStats();
     elements.studentWorkspace.style.display = 'none';
     elements.blankState.style.display = 'flex';
-    state.currentIndex = -1;
+    if (elements.previewIframe) elements.previewIframe.src = 'about:blank';
   } catch (err) {
     alert('เกิดข้อผิดพลาดในการล้างแคช: ' + err.message);
   }

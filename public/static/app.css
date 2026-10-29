@@ -541,6 +541,43 @@ kbd {
   flex-shrink: 0;
 }
 
+.btn-remove-student {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.student-item:hover .btn-remove-student {
+  opacity: 0.85;
+}
+
+.btn-remove-student:hover {
+  opacity: 1 !important;
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(244, 63, 94, 0.38);
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.22);
+  transform: scale(1.06);
+}
+
+.btn-danger-hover:hover {
+  color: #fb7185 !important;
+  background: rgba(244, 63, 94, 0.16) !important;
+  border-color: rgba(244, 63, 94, 0.4) !important;
+  box-shadow: 0 0 14px rgba(244, 63, 94, 0.25) !important;
+}
+
 .status-dot {
   width: 9px;
   height: 9px;

@@ -353,6 +353,26 @@ async def fetch_multiple_repos(
     return results
 
 
+def delete_repo_cache(owner: str, repo: str, base_cache_dir: Optional[Path] = None) -> bool:
+    """ลบแคชของ repo รายบุคคลออกจากเครื่อง คืนค่า True หากพบและลบสำเร็จ"""
+    if not owner or not repo:
+        return False
+    if not re.match(r"^[A-Za-z0-9_.-]{1,100}$", owner) or not re.match(r"^[A-Za-z0-9_.-]{1,100}$", repo):
+        return False
+    if owner in (".", "..") or repo in (".", "..") or owner.startswith(".") or repo.startswith("."):
+        return False
+
+    cache_root = (base_cache_dir or DEFAULT_CACHE_DIR).resolve()
+    target_dir = get_repo_cache_dir(owner, repo, base_cache_dir).resolve()
+    if not target_dir.is_relative_to(cache_root) or target_dir == cache_root:
+        return False
+
+    if target_dir.exists() and target_dir.is_dir():
+        shutil.rmtree(target_dir, ignore_errors=True)
+        return True
+    return False
+
+
 def clear_all_cache(base_cache_dir: Optional[Path] = None) -> int:
     """ล้างแคชทั้งหมดในโฟลเดอร์แคช คืนค่าจำนวน repo ที่ลบไป"""
     cache_root = base_cache_dir or DEFAULT_CACHE_DIR

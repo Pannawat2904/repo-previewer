@@ -25,6 +25,7 @@ from previewer.fetch import (
     DEFAULT_CACHE_DIR,
     FetchError,
     clear_all_cache,
+    delete_repo_cache,
     fetch_and_cache_repo,
     get_repo_cache_dir,
     is_repo_cached,
@@ -142,6 +143,11 @@ class FetchSingleRequest(BaseModel):
 class ReviewUpdateRequest(BaseModel):
     viewed: Optional[bool] = None
     note: Optional[str] = None
+
+
+class DeleteSingleCacheRequest(BaseModel):
+    owner: Optional[str] = ""
+    repo: Optional[str] = ""
 
 
 # -------------------------------------------------------------
@@ -356,6 +362,24 @@ async def api_clear_cache():
     server_manager.stop_all()
     count = clear_all_cache()
     return {"success": True, "deleted_repos_count": count}
+
+
+@app.post("/api/cache/delete")
+async def api_delete_single_cache(req: DeleteSingleCacheRequest):
+    """ลบแคชและปิดเซิร์ฟเวอร์พรีวิวของ repo รายบุคคล"""
+    deleted = False
+    if req.owner and req.repo:
+        server_manager.stop(req.owner, req.repo)
+        deleted = delete_repo_cache(req.owner, req.repo)
+    return {"success": True, "deleted": deleted}
+
+
+@app.delete("/api/cache/{owner}/{repo}")
+async def api_delete_repo_cache(owner: str, repo: str):
+    """ลบแคชและปิดเซิร์ฟเวอร์พรีวิวของ repo รายบุคคล (DELETE method)"""
+    server_manager.stop(owner, repo)
+    deleted = delete_repo_cache(owner, repo)
+    return {"success": True, "deleted": deleted}
 
 
 # -------------------------------------------------------------
