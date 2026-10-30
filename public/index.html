@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261030-1">
+  <link rel="stylesheet" href="/static/app.css?v=20261030-2">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -43,68 +43,22 @@
         </div>
       </div>
 
-      <!-- Center: Active Student Controls & Tabs (Shown when a student is selected) -->
+      <!-- Center: Mode Tabs & Device Switcher (Shown when a student is selected) -->
       <div id="topWorkspaceBar" class="top-workspace-bar" style="display: none;">
-        <!-- Prev / Next & Student Name -->
-        <div class="top-student-nav">
-          <div class="nav-btn-group">
-            <button id="btnPrevStudent" class="btn btn-icon" title="คนก่อนหน้า (คีย์ลัด ←)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-            </button>
-            <span class="nav-counter" id="navCounterText">1 / 1</span>
-            <button id="btnNextStudent" class="btn btn-icon" title="คนถัดไป (คีย์ลัด →)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          </div>
-
-          <div class="top-student-identity">
-            <h2 id="activeStudentName" title="ชื่อนักเรียน">ชื่อนักเรียน</h2>
-            <a id="activeRepoLink" href="#" target="_blank" rel="noopener noreferrer" class="repo-link" title="เปิดหน้า GitHub Repository">
-              <span id="activeRepoText">owner/repo</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-            </a>
-          </div>
-
-          <label class="custom-checkbox-label" title="ทำเครื่องหมายว่าตรวจแล้ว (คีย์ลัด Space หรือ V)">
-            <input type="checkbox" id="checkViewed">
-            <span class="checkbox-box"></span>
-            <span class="checkbox-text">ตรวจแล้ว</span>
-          </label>
-
-          <button id="btnReloadCurrentRepo" class="btn btn-secondary btn-icon-only" title="รีโหลดงานและพรีวิวใหม่จาก GitHub (คีย์ลัด R)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-            </svg>
-          </button>
-        </div>
-
-        <span class="top-bar-divider"></span>
-
-        <!-- Mode Tabs & Device Switcher -->
         <div class="top-tabs-group">
           <div class="tab-buttons">
-            <button class="tab-btn active" data-tab="preview" title="พรีวิวหน้าเว็บ (คีย์ลัด 1)">
+            <button class="tab-btn active" data-tab="preview" title="พรีวิวผลลัพธ์ (คีย์ลัด 1)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="2" y1="12" x2="22" y2="12"></line>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
               </svg>
-              <span>พรีวิว</span>
+              <span>พรีวิวผลลัพธ์</span>
             </button>
-            <button class="tab-btn" data-tab="code" title="ดูโค้ด (คีย์ลัด 2)">
+            <button class="tab-btn" data-tab="code" title="ดูไฟล์โค้ดทั้งหมด (คีย์ลัด 2)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="16 18 22 12 16 6"></polyline>
                 <polyline points="8 6 2 12 8 18"></polyline>
               </svg>
-              <span>โค้ด</span>
+              <span>ดูโค้ด</span>
             </button>
             <button class="tab-btn" data-tab="inspect" title="ตรวจการใช้ AI และข้อสังเกต (คีย์ลัด 3)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -254,23 +208,6 @@
           </div>
         </div>
 
-        <!-- Active Student Note & Status Box (Moved from center screen into sidebar!) -->
-        <div id="sidebarActiveMeta" class="sidebar-active-meta" style="display: none;">
-          <div class="sidebar-meta-badges">
-            <span id="hasWebBadge" class="badge badge-success">เว็บสถิต (HTML)</span>
-            <button type="button" id="aiRiskBadge" class="badge badge-ai-low" title="คลิกเพื่อดูรายละเอียดการวิเคราะห์โอกาสใช้ AI เขียนโค้ด">🤖 AI: รอผล...</button>
-            <span id="commitBadge" class="badge badge-subtle">Commit: -</span>
-          </div>
-          <div class="note-bar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            <input type="text" id="studentNoteInput" placeholder="จดคะแนน / บันทึกของคนนี้...">
-            <span id="noteSaveIndicator" class="save-status">✓</span>
-          </div>
-        </div>
-
         <!-- Sidebar Summary Footer -->
         <div class="sidebar-footer">
           <span id="viewedStatsText">ตรวจแล้ว: 0 / 0</span>
@@ -298,6 +235,66 @@
 
         <!-- Active Student Workspace (100% Full Height & Width) -->
         <div id="studentWorkspace" class="student-workspace" style="display: none;">
+          <!-- Unified Student Grading & Status Bar -->
+          <div id="sidebarActiveMeta" class="student-grading-bar">
+            <div class="grading-bar-left">
+              <div class="nav-btn-group">
+                <button id="btnPrevStudent" class="btn btn-icon" title="คนก่อนหน้า (คีย์ลัด ←)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <span class="nav-counter" id="navCounterText">1 / 1</span>
+                <button id="btnNextStudent" class="btn btn-icon" title="คนถัดไป (คีย์ลัด →)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="grading-student-identity">
+                <h2 id="activeStudentName" title="ชื่อนักเรียน">ชื่อนักเรียน</h2>
+                <a id="activeRepoLink" href="#" target="_blank" rel="noopener noreferrer" class="repo-link" title="แหล่งที่มาของงาน">
+                  <span id="activeRepoText">owner/repo</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                </a>
+              </div>
+
+              <div class="grading-meta-badges">
+                <span id="hasWebBadge" class="badge badge-success">เว็บสถิต (HTML)</span>
+                <button type="button" id="aiRiskBadge" class="badge badge-ai-low" title="คลิกเพื่อดูรายละเอียดการวิเคราะห์โอกาสใช้ AI เขียนโค้ด">🤖 AI: รอผล...</button>
+                <span id="commitBadge" class="badge badge-subtle">Commit: -</span>
+              </div>
+            </div>
+
+            <div class="grading-bar-right">
+              <div class="note-bar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <input type="text" id="studentNoteInput" placeholder="ให้คะแนน / บันทึกของคนนี้...">
+                <span id="noteSaveIndicator" class="save-status">✓</span>
+              </div>
+
+              <label class="custom-checkbox-label" title="ทำเครื่องหมายว่าตรวจแล้ว (คีย์ลัด Space หรือ V)">
+                <input type="checkbox" id="checkViewed">
+                <span class="checkbox-box"></span>
+                <span class="checkbox-text">ตรวจแล้ว</span>
+              </label>
+
+              <button id="btnReloadCurrentRepo" class="btn btn-secondary btn-icon-only" title="รีโหลดงานและพรีวิวใหม่จาก GitHub (คีย์ลัด R)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
           <!-- Tab 1: Preview Pane -->
           <div id="tabPreview" class="tab-pane active">
             <!-- Non-static web alert banner (shown when no index.html) -->
@@ -323,30 +320,31 @@
             <div id="pythonPreviewStudio" class="py-studio" style="display: none;">
               <div class="py-studio-toolbar">
                 <div class="py-toolbar-left">
-                  <span class="py-engine-badge">🐍 Python OOP Runner</span>
                   <select id="pyEntryFileSelect" class="py-file-select" title="เลือกไฟล์ Python ที่ต้องการรัน"></select>
                   <button id="btnRunPython" class="btn btn-primary btn-sm" title="รันโค้ด Python และดูผลลัพธ์ (คีย์ลัด Ctrl+Enter)">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
-                    <span>รันโค้ดดูผลลัพธ์</span>
+                    <span>รันโค้ด</span>
                   </button>
                   <button id="btnResetPythonCode" class="btn btn-secondary btn-sm" title="คืนค่าโค้ดต้นฉบับของนักเรียน" style="display: none;">↺ คืนค่าโค้ดเดิม</button>
+                  <div id="pyOopChipsBar" class="py-oop-chips-bar"></div>
                 </div>
                 <div class="py-toolbar-right">
+                  <button type="button" id="btnToggleStdin" class="btn btn-secondary btn-sm" title="เปิด/ปิด ช่องป้อนค่าล่วงหน้าสำหรับคำสั่ง input()">
+                    <span>⌨️ ค่า input()</span>
+                    <span id="pyInputDetectedBadge" class="py-input-dot" style="display: none;">!</span>
+                  </button>
                   <span id="pyExecStatus" class="py-exec-status">พร้อมรัน</span>
                 </div>
               </div>
 
-              <!-- Detected OOP Classes & Methods Quick Bar -->
-              <div id="pyOopChipsBar" class="py-oop-chips-bar"></div>
-
-              <!-- Split Workspace: Left = Code Editor / Notebook, Right = Output Console & Stdin -->
+              <!-- Split Workspace: Left = Code Editor, Right = Output Console -->
               <div class="py-studio-split">
                 <div class="py-editor-pane">
                   <div class="py-pane-header">
-                    <span>📝 โค้ด Python (แก้ไขเพื่อทดสอบสร้าง Object / เรียก Method เพิ่มเติมได้)</span>
-                    <span id="pyEditorStats" class="file-stats"></span>
+                    <span class="py-pane-title">📝 โค้ด Python ของนักเรียน</span>
+                    <span id="pyEditorStats" class="file-stats">แก้ไขเพื่อทดสอบรันได้</span>
                   </div>
                   <div class="py-editor-body">
                     <div id="pyEditorLineNumbers" class="py-line-numbers">1</div>
@@ -355,21 +353,20 @@
                 </div>
 
                 <div class="py-output-pane">
-                  <div class="py-stdin-box">
-                    <div class="py-stdin-header">
-                      <span>⌨️ ข้อมูลนำเข้าล่วงหน้า (Input / stdin สำหรับคำสั่ง <code>input()</code>)</span>
-                      <span id="pyInputDetectedBadge" class="badge badge-warning" style="display: none;">พบการใช้ input()</span>
-                    </div>
-                    <textarea id="pyStdinInput" rows="2" placeholder="หากโค้ดมี input() สามารถพิมพ์ค่าที่จะป้อนไว้ที่นี่ (บรรทัดละ 1 ค่า) หรือเว้นว่างไว้เพื่อให้ระบบถามขณะรัน..."></textarea>
+                  <div class="py-pane-header">
+                    <span class="py-pane-title">🖥️ ผลลัพธ์การรันโปรแกรม (Output Console)</span>
+                    <button id="btnClearPyOutput" class="btn-clear-console" title="ล้างผลลัพธ์หน้าจอ">ล้างหน้าจอ</button>
                   </div>
 
-                  <div class="py-output-header">
-                    <span>🖥️ ผลลัพธ์การรันโปรแกรม (Output Console)</span>
-                    <button id="btnClearPyOutput" class="btn-text-sm" title="ล้างผลลัพธ์">ล้างหน้าจอ</button>
+                  <div id="pyStdinBox" class="py-stdin-box" style="display: none;">
+                    <div class="py-stdin-header">
+                      <span>⌨️ ป้อนค่าล่วงหน้าสำหรับคำสั่ง <code>input()</code> (บรรทัดละ 1 ค่า)</span>
+                    </div>
+                    <textarea id="pyStdinInput" class="py-stdin-textarea" rows="2" placeholder="พิมพ์ค่าที่จะป้อนให้ input() ทีละบรรทัดที่นี่ หรือเว้นว่างไว้เพื่อป้อนผ่านป๊อปอัปตอนกดรัน..."></textarea>
                   </div>
 
                   <div id="pyOutputConsole" class="py-output-console">
-                    <div class="py-output-placeholder">กดปุ่ม "▶ รันโค้ดดูผลลัพธ์" เพื่อดูผลลัพธ์การทำงานของโค้ด Python</div>
+                    <div class="py-output-placeholder">กดปุ่ม "▶ รันโค้ด" เพื่อดูผลลัพธ์การทำงานของโค้ด Python</div>
                   </div>
                 </div>
               </div>
@@ -499,6 +496,6 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261030-1"></script>
+  <script src="/static/app.js?v=20261030-2"></script>
 </body>
 </html>

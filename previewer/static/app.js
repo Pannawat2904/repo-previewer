@@ -114,6 +114,8 @@ const elements = {
   pyEditorStats: document.getElementById('pyEditorStats'),
   pyEditorLineNumbers: document.getElementById('pyEditorLineNumbers'),
   pyCodeEditor: document.getElementById('pyCodeEditor'),
+  btnToggleStdin: document.getElementById('btnToggleStdin'),
+  pyStdinBox: document.getElementById('pyStdinBox'),
   pyStdinInput: document.getElementById('pyStdinInput'),
   pyInputDetectedBadge: document.getElementById('pyInputDetectedBadge'),
   btnClearPyOutput: document.getElementById('btnClearPyOutput'),
@@ -721,10 +723,21 @@ function setupEventListeners() {
       }
     });
   }
+  if (elements.btnToggleStdin) {
+    elements.btnToggleStdin.addEventListener('click', () => {
+      if (!elements.pyStdinBox) return;
+      const isVisible = elements.pyStdinBox.style.display !== 'none';
+      elements.pyStdinBox.style.display = isVisible ? 'none' : 'flex';
+      elements.btnToggleStdin.classList.toggle('active', !isVisible);
+      if (!isVisible && elements.pyStdinInput) {
+        elements.pyStdinInput.focus();
+      }
+    });
+  }
   if (elements.btnClearPyOutput) {
     elements.btnClearPyOutput.addEventListener('click', () => {
       if (elements.pyOutputConsole) {
-        elements.pyOutputConsole.innerHTML = `<div class="py-output-placeholder">ล้างหน้าจอแล้ว — กดปุ่ม "▶ รันโค้ดดูผลลัพธ์" เพื่อรันใหม่</div>`;
+        elements.pyOutputConsole.innerHTML = `<div class="py-output-placeholder">ล้างหน้าจอแล้ว — กดปุ่ม "▶ รันโค้ด" เพื่อรันใหม่</div>`;
       }
     });
   }
@@ -1446,6 +1459,10 @@ function renderStudentsList() {
     else if (student.status === 'error') statusTitle = student.error_message || 'พบข้อผิดพลาด';
 
     const initial = (student.student_name || student.owner || 'S').trim().charAt(0).toUpperCase();
+    const isUploadedItem = student.source_type === 'upload' || student.owner === 'local-upload';
+    const subLabel = isUploadedItem
+      ? (student.raw_input || 'ไฟล์อัปโหลด')
+      : (student.owner ? `${student.owner}/${student.repo}` : student.raw_input);
 
     itemEl.innerHTML = `
       <div class="student-item-left">
@@ -1453,8 +1470,8 @@ function renderStudentsList() {
         <div class="student-avatar">${escapeHtml(initial)}</div>
         <div class="student-item-details">
           <span class="student-item-name" title="${escapeHtml(student.student_name)}">${escapeHtml(student.student_name)}</span>
-          <span class="student-item-sub" title="${escapeHtml(student.owner ? `${student.owner}/${student.repo}` : student.raw_input)}">
-            ${escapeHtml(student.owner ? `${student.owner}/${student.repo}` : student.raw_input)}
+          <span class="student-item-sub" title="${escapeHtml(subLabel)}">
+            ${escapeHtml(subLabel)}
           </span>
         </div>
       </div>
@@ -1591,7 +1608,10 @@ async function selectStudent(index) {
 
   // Badges
   const commit = student.meta && student.meta.commit_hash ? student.meta.commit_hash.substring(0, 7) : '-';
-  elements.commitBadge.innerText = isUploaded ? 'ไฟล์อัปโหลด' : `Commit: ${commit}`;
+  if (elements.commitBadge) {
+    elements.commitBadge.style.display = isUploaded ? 'none' : 'inline-flex';
+    elements.commitBadge.innerText = isUploaded ? 'ไฟล์อัปโหลด' : `Commit: ${commit}`;
+  }
 
   // ถ้าสถานะยังเป็น Error ให้แสดงข้อมูลข้อผิดพลาด
   if (student.status === 'error') {
@@ -1660,8 +1680,9 @@ async function loadPreviewForStudent(student) {
       elements.hasWebBadge.innerText = data.is_subfolder ? `เว็บสถิต (${data.index_rel})` : 'เว็บสถิต (HTML)';
       elements.noWebNotice.style.display = 'none';
       if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
+      if (elements.previewToolbar) elements.previewToolbar.style.display = 'flex';
       if (deviceSwitcherEl) deviceSwitcherEl.style.display = 'flex';
-      if (elements.btnOpenNewTab) elements.btnOpenNewTab.style.display = 'inline-flex';
+      if (elements.btnOpenExternal) elements.btnOpenExternal.style.display = 'inline-flex';
       elements.iframeContainer.style.display = 'flex';
       elements.previewIframe.src = data.url;
     } else if (student.has_python && student.python_info && (student.python_info.files || []).length > 0) {
@@ -1671,8 +1692,9 @@ async function loadPreviewForStudent(student) {
       elements.previewIframe.src = 'about:blank';
       elements.iframeContainer.style.display = 'none';
       elements.noWebNotice.style.display = 'none';
+      if (elements.previewToolbar) elements.previewToolbar.style.display = 'none';
       if (deviceSwitcherEl) deviceSwitcherEl.style.display = 'none';
-      if (elements.btnOpenNewTab) elements.btnOpenNewTab.style.display = 'none';
+      if (elements.btnOpenExternal) elements.btnOpenExternal.style.display = 'none';
 
       const oopSum = student.python_info.oop_summary || {};
       elements.hasWebBadge.className = 'badge badge-python';
@@ -1689,6 +1711,7 @@ async function loadPreviewForStudent(student) {
     } else {
       // 3. ไม่มีทั้ง index.html และไฟล์ Python
       student.has_web = false;
+      if (elements.previewToolbar) elements.previewToolbar.style.display = 'none';
       elements.hasWebBadge.className = 'badge badge-warning';
       elements.hasWebBadge.innerText = 'ดูได้เฉพาะโค้ด';
       elements.noWebNotice.style.display = 'flex';
@@ -1755,15 +1778,22 @@ function selectPythonStudioFile(student, filePath, isAutoInit = false) {
   const oopSummary = (student.python_info && student.python_info.oop_summary) || {};
   renderPythonOopChips(analysis, oopSummary);
 
-  // แจ้งเตือนหากโค้ดมีการเรียกใช้ input()
+  // แจ้งเตือนและเปิดช่อง Stdin อัตโนมัติเฉพาะเมื่อโค้ดมีการเรียกใช้ input()
   if (elements.pyInputDetectedBadge) {
     elements.pyInputDetectedBadge.style.display = analysis.uses_input ? 'inline-block' : 'none';
+  }
+  if (elements.pyStdinBox) {
+    const showStdin = !!analysis.uses_input;
+    elements.pyStdinBox.style.display = showStdin ? 'flex' : 'none';
+    if (elements.btnToggleStdin) {
+      elements.btnToggleStdin.classList.toggle('active', showStdin);
+    }
   }
   if (elements.pyStdinInput) {
     if (analysis.uses_input && analysis.input_prompts && analysis.input_prompts.length > 0) {
       elements.pyStdinInput.placeholder = `ตรวจพบ input(${analysis.input_prompts.map(p => `"${p}"`).join(', ')}) — พิมพ์ค่าที่จะป้อนให้โปรแกรมทีละบรรทัดที่นี่ หรือกด "รันโค้ด" เพื่อป้อนผ่านป๊อปอัป`;
     } else {
-      elements.pyStdinInput.placeholder = 'หากโค้ดมีคำสั่ง input() ให้พิมพ์ค่าที่จะป้อนทีละบรรทัดที่นี่ (หรือเว้นว่างไว้เพื่อป้อนผ่านกล่องโต้ตอบตอนกดรัน)...';
+      elements.pyStdinInput.placeholder = 'พิมพ์ค่าที่จะป้อนให้ input() ทีละบรรทัดที่นี่ หรือเว้นว่างไว้เพื่อป้อนผ่านกล่องโต้ตอบตอนกดรัน...';
     }
   }
 
@@ -1840,6 +1870,9 @@ function updatePyEditorLineNumbers() {
     nums.push(i);
   }
   elements.pyEditorLineNumbers.innerText = nums.join('\n');
+  if (elements.pyEditorStats) {
+    elements.pyEditorStats.innerText = `${lineCount} บรรทัด · แก้ไขโค้ดเพื่อทดสอบรันได้`;
+  }
 }
 
 function renderPythonOopChips(analysis, oopSummary) {
@@ -1849,25 +1882,25 @@ function renderPythonOopChips(analysis, oopSummary) {
   const chips = [];
 
   if (classes.length === 0 && (!oopSummary || !oopSummary.total_classes)) {
-    chips.push(`<span class="oop-chip oop-chip-neutral">📄 สคริปต์ Python ทั่วไป (ไม่มีการประกาศ Class)</span>`);
+    chips.push(`<span class="oop-chip oop-chip-neutral">สคริปต์ทั่วไป (ไม่มี Class)</span>`);
   } else {
     classes.forEach(cls => {
-      const baseText = cls.bases && cls.bases.length > 0 ? ` <span class="oop-chip-sub">(สืบทอด: ${escapeHtml(cls.bases.join(', '))})</span>` : '';
-      chips.push(`<span class="oop-chip oop-chip-class" title="ประกาศที่บรรทัด ${cls.lineno}">🏛️ class <strong>${escapeHtml(cls.name)}</strong>${baseText}</span>`);
+      const baseText = cls.bases && cls.bases.length > 0 ? ` <span class="oop-chip-sub">(${escapeHtml(cls.bases.join(', '))})</span>` : '';
+      chips.push(`<span class="oop-chip oop-chip-class" title="ประกาศที่บรรทัด ${cls.lineno}">class <strong>${escapeHtml(cls.name)}</strong>${baseText}</span>`);
 
       if (cls.attributes && cls.attributes.length > 0) {
-        chips.push(`<span class="oop-chip oop-chip-attr" title="Instance Attributes (self.xxx)">🔹 self.${cls.attributes.map(a => escapeHtml(a)).join(', self.')}</span>`);
+        chips.push(`<span class="oop-chip oop-chip-attr" title="Instance Attributes">self.${cls.attributes.map(a => escapeHtml(a)).join(', self.')}</span>`);
       }
 
       if (cls.methods && cls.methods.length > 0) {
         const methodNames = cls.methods.map(m => `${escapeHtml(m.name)}()`).join(', ');
-        chips.push(`<span class="oop-chip oop-chip-method" title="Methods ในคลาส ${escapeHtml(cls.name)}">⚙️ ${methodNames}</span>`);
+        chips.push(`<span class="oop-chip oop-chip-method" title="Methods ในคลาส ${escapeHtml(cls.name)}">${methodNames}</span>`);
       }
     });
   }
 
   if (functions.length > 0) {
-    chips.push(`<span class="oop-chip oop-chip-func">🔧 ฟังก์ชัน: ${functions.map(f => `${escapeHtml(f.name)}()`).join(', ')}</span>`);
+    chips.push(`<span class="oop-chip oop-chip-func">def ${functions.map(f => `${escapeHtml(f.name)}()`).join(', ')}</span>`);
   }
 
   if (analysis && analysis.syntax_valid === false && analysis.syntax_error) {

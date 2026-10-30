@@ -269,54 +269,21 @@ body {
   100% { background-position: 200% center; }
 }
 
-/* Unified Top Workspace Controls (Inline inside .top-nav) */
+/* Unified Top Workspace Controls (Centered Mode Tabs inside .top-nav) */
 .top-workspace-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   flex: 1;
   min-width: 0;
   gap: 10px;
   padding: 0 6px;
 }
 
-.top-student-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.top-student-identity {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.top-student-identity h2 {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 190px;
-}
-
-.top-bar-divider {
-  width: 1px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
-
 .top-tabs-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
@@ -805,24 +772,68 @@ kbd {
   100% { transform: scale(1.15); opacity: 1; }
 }
 
-/* Active Student Note & Meta Docked in Sidebar */
-.sidebar-active-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 10px 12px;
-  border-top: var(--glass-border);
-  background: rgba(13, 20, 36, 0.85);
-  flex-shrink: 0;
-}
-
-.sidebar-meta-badges {
+/* Unified Student Grading Bar (Top of Workspace) */
+.student-grading-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  padding: 7px 14px;
+  background: rgba(11, 17, 32, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.grading-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.grading-student-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.grading-student-identity h2 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.grading-meta-badges {
+  display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 0.7rem;
+}
+
+.grading-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.grading-bar-right .note-bar {
+  width: 240px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.grading-bar-right .note-bar input {
+  font-size: 0.78rem;
 }
 
 .sidebar-footer {
@@ -2621,7 +2632,7 @@ kbd {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: rgba(6, 10, 22, 0.88);
+  background: transparent;
   overflow: hidden;
 }
 
@@ -2630,178 +2641,213 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 14px;
-  background: rgba(13, 20, 38, 0.92);
-  border-bottom: var(--glass-border);
+  padding: 8px 14px;
+  background: rgba(13, 20, 38, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
-.py-studio-toolbar-left,
-.py-studio-toolbar-right {
+.py-toolbar-left,
+.py-toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.py-studio-badge {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #fde047;
-  background: rgba(250, 204, 21, 0.12);
-  border: 1px solid rgba(250, 204, 21, 0.3);
-  padding: 3px 9px;
-  border-radius: var(--radius-full);
-}
-
-.py-file-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--text-secondary);
+  min-width: 0;
 }
 
 .py-file-select {
-  background: rgba(6, 10, 22, 0.9);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: var(--radius-xs);
-  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 5px 10px;
   font-family: var(--font-code);
   font-size: 0.78rem;
+  font-weight: 500;
   outline: none;
   cursor: pointer;
 }
 
+.py-file-select:hover,
+.py-file-select:focus {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+#btnToggleStdin.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #bae6fd;
+}
+
+.py-input-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #000;
+  font-size: 0.68rem;
+  font-weight: 800;
+  margin-left: 2px;
+}
+
 .py-exec-status {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
 }
 
 .py-exec-status.status-running {
-  background: rgba(56, 189, 248, 0.18);
+  background: rgba(56, 189, 248, 0.16);
   color: var(--accent-cyan);
 }
 
 .py-exec-status.status-ok {
-  background: rgba(16, 185, 129, 0.18);
+  background: rgba(16, 185, 129, 0.15);
   color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.28);
 }
 
 .py-exec-status.status-error {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.18);
   color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.32);
 }
 
 .py-exec-status.status-waiting {
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.18);
   color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.32);
 }
 
-/* OOP Structure Chips Bar */
+/* Inline OOP Structure Chips inside Toolbar */
 .py-oop-chips-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  background: rgba(10, 16, 32, 0.78);
-  border-bottom: var(--glass-border);
   overflow-x: auto;
-  flex-shrink: 0;
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .oop-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-family: var(--font-code);
-  padding: 2px 9px;
-  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  border-radius: 6px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .oop-chip-class {
-  background: rgba(168, 85, 247, 0.18);
+  background: rgba(168, 85, 247, 0.14);
   color: #e9d5ff;
-  border: 1px solid rgba(168, 85, 247, 0.4);
+  border: 1px solid rgba(168, 85, 247, 0.32);
 }
 
 .oop-chip-sub {
   color: #c084fc;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
 }
 
 .oop-chip-attr {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(56, 189, 248, 0.12);
   color: #bae6fd;
-  border: 1px solid rgba(56, 189, 248, 0.32);
+  border: 1px solid rgba(56, 189, 248, 0.25);
 }
 
 .oop-chip-method {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.12);
   color: #a7f3d0;
-  border: 1px solid rgba(16, 185, 129, 0.32);
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 .oop-chip-func {
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.12);
   color: #fde68a;
-  border: 1px solid rgba(245, 158, 11, 0.32);
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .oop-chip-neutral {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
 }
 
 .oop-chip-error {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.18);
   color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
-/* Split Editor & Output Console */
+/* Split Editor & Output Console Cards */
 .py-studio-split {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 12px;
+  padding: 12px 14px;
   overflow: hidden;
 }
 
-.py-editor-pane {
+.py-editor-pane,
+.py-output-pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: var(--glass-border);
-  background: rgba(5, 8, 18, 0.85);
+  background: rgba(9, 14, 28, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.45);
 }
 
 .py-pane-header {
-  padding: 6px 14px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-  background: rgba(15, 23, 42, 0.65);
-  border-bottom: var(--glass-border);
+  padding: 9px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.78);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.py-pane-hint {
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: var(--text-muted);
+.py-pane-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-clear-console {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-family: var(--font-main);
+  padding: 2px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.btn-clear-console:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
 }
 
 .py-editor-body {
@@ -2812,15 +2858,16 @@ kbd {
   position: relative;
 }
 
+.py-line-numbers,
 .py-editor-lines {
-  width: 44px;
-  padding: 12px 8px;
+  width: 46px;
+  padding: 14px 10px;
   text-align: right;
   font-family: var(--font-code);
-  font-size: 0.83rem;
-  line-height: 1.6;
+  font-size: 0.85rem;
+  line-height: 1.65;
   color: #475569;
-  background: rgba(10, 15, 28, 0.65);
+  background: rgba(6, 10, 22, 0.55);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   user-select: none;
   overflow: hidden;
@@ -2836,30 +2883,23 @@ kbd {
   border: none;
   outline: none;
   resize: none;
-  padding: 12px 16px;
+  padding: 14px 16px;
   color: #f1f5f9;
   font-family: var(--font-code);
-  font-size: 0.83rem;
-  line-height: 1.6;
+  font-size: 0.85rem;
+  line-height: 1.65;
   tab-size: 4;
   white-space: pre;
   overflow: auto;
 }
 
-.py-output-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: rgba(7, 11, 22, 0.92);
-}
-
 .py-stdin-box {
-  padding: 8px 14px;
-  background: rgba(13, 20, 38, 0.72);
-  border-bottom: var(--glass-border);
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.65);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -2867,36 +2907,27 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.74rem;
+  font-weight: 500;
   color: var(--text-secondary);
-}
-
-.py-input-badge {
-  font-size: 0.7rem;
-  padding: 1px 7px;
-  border-radius: var(--radius-full);
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
 .py-stdin-textarea {
   width: 100%;
-  background: rgba(4, 7, 15, 0.8);
+  background: rgba(5, 9, 20, 0.9) !important;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-xs);
-  padding: 6px 10px;
-  color: var(--text-primary);
+  border-radius: 7px;
+  padding: 7px 10px;
+  color: #f1f5f9 !important;
   font-family: var(--font-code);
-  font-size: 0.78rem;
+  font-size: 0.79rem;
   line-height: 1.45;
   resize: vertical;
   outline: none;
 }
 
 .py-stdin-textarea:focus {
-  border-color: var(--accent-cyan);
+  border-color: rgba(56, 189, 248, 0.5);
 }
 
 .py-output-console {
@@ -2906,7 +2937,14 @@ kbd {
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+}
+
+.py-output-placeholder {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 16px;
 }
 
 .py-console-loading {
