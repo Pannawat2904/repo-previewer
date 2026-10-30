@@ -138,6 +138,13 @@ const elements = {
   checkGroupSingleStudent: document.getElementById('checkGroupSingleStudent'),
   singleStudentNameInput: document.getElementById('singleStudentNameInput'),
   selectedFilesList: document.getElementById('selectedFilesList'),
+  uploadStatsBar: document.getElementById('uploadStatsBar'),
+  uploadStatsCount: document.getElementById('uploadStatsCount'),
+  uploadStatsSize: document.getElementById('uploadStatsSize'),
+  btnClearSelectedFiles: document.getElementById('btnClearSelectedFiles'),
+  windowDragOverlay: document.getElementById('windowDragOverlay'),
+  windowDragCourseLabel: document.getElementById('windowDragCourseLabel'),
+  toastContainer: document.getElementById('toastContainer'),
   btnStartFetch: document.getElementById('btnStartFetch'),
   btnClearAllCache: document.getElementById('btnClearAllCache'),
   btnExportCsv: document.getElementById('btnExportCsv'),
@@ -340,6 +347,40 @@ function renderCourseHub() {
       });
     }
 
+    // Drag-and-drop files directly onto this course card
+    card.addEventListener('dragover', (e) => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.types || !Array.from(dt.types).includes('Files')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.add('card-drop-active');
+      dt.dropEffect = 'copy';
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      card.classList.remove('card-drop-active');
+    });
+
+    card.addEventListener('drop', async (e) => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.types || !Array.from(dt.types).includes('Files')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.remove('card-drop-active');
+
+      if (course.id !== state.activeCourseId) {
+        switchCourse(course.id);
+      }
+
+      const files = await extractFilesFromDataTransfer(dt);
+      if (files && files.length > 0) {
+        switchImportMode('upload');
+        addPendingUploadFiles(files);
+        openModal();
+      }
+    });
+
     grid.appendChild(card);
   });
 }
@@ -433,29 +474,8 @@ function setupEventListeners() {
     });
   }
 
-  // Local File Upload listeners (.py, .ipynb, .zip, .html)
-  if (elements.studentFilesInput) {
-    elements.studentFilesInput.addEventListener('change', (e) => {
-      addPendingUploadFiles(Array.from(e.target.files || []));
-      e.target.value = '';
-    });
-  }
-  if (elements.uploadDropZone) {
-    elements.uploadDropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      elements.uploadDropZone.classList.add('dragover');
-    });
-    elements.uploadDropZone.addEventListener('dragleave', () => {
-      elements.uploadDropZone.classList.remove('dragover');
-    });
-    elements.uploadDropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      elements.uploadDropZone.classList.remove('dragover');
-      if (e.dataTransfer && e.dataTransfer.files) {
-        addPendingUploadFiles(Array.from(e.dataTransfer.files));
-      }
-    });
-  }
+  // Global & In-Modal Drag-and-Drop + File Pickers
+  setupDragAndDropHandlers();
   if (elements.checkGroupSingleStudent) {
     elements.checkGroupSingleStudent.addEventListener('change', (e) => {
       if (elements.singleStudentNameInput) {
@@ -889,35 +909,321 @@ function switchImportMode(mode) {
   }
 }
 
+// -------------------------------------------------------------
+// Toast Notifications
+// -------------------------------------------------------------
+function showToast(message, type = 'info') {
+  let container = elements.toastContainer || document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast-pill ${type}`;
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✅';
+  else if (type === 'warning') icon = '⚠️';
+  else if (type === 'error') icon = '❌';
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <span class="toast-text">${escapeHtml(message)}</span>
+  `;
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add('show');
+  });
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 320);
+  }, 3200);
+}
+
+// -------------------------------------------------------------
+// Asynchronous File & Directory Extractor (Handles folders & files)
+// -------------------------------------------------------------
+async function extractFilesFromDataTransfer(dt) {
+  if (!dt) return [];
+  const files = [];
+
+  // Check if browser supports webkitGetAsEntry (Chrome, Edge, Safari, Firefox)
+  if (dt.items && dt.items.length > 0 && typeof dt.items[0].webkitGetAsEntry === 'function') {
+    const queue = [];
+    for (let i = 0; i < dt.items.length; i++) {
+      const item = dt.items[i];
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) queue.push(entry);
+        else {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    async function traverseEntry(entry) {
+      if (!entry) return;
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          entry.file((file) => {
+            if (file) files.push(file);
+            resolve();
+          }, () => resolve());
+        });
+      } else if (entry.isDirectory) {
+        return new Promise((resolve) => {
+          const dirReader = entry.createReader();
+          const readNextBatch = () => {
+            dirReader.readEntries(async (batch) => {
+              if (!batch || batch.length === 0) {
+                resolve();
+              } else {
+                for (const child of batch) {
+                  await traverseEntry(child);
+                }
+                readNextBatch();
+              }
+            }, () => resolve());
+          };
+          readNextBatch();
+        });
+      }
+    }
+
+    for (const entry of queue) {
+      await traverseEntry(entry);
+    }
+  } else if (dt.files && dt.files.length > 0) {
+    for (let i = 0; i < dt.files.length; i++) {
+      files.push(dt.files[i]);
+    }
+  }
+
+  return files;
+}
+
+// -------------------------------------------------------------
+// Global & In-Modal Drag-and-Drop Handlers
+// -------------------------------------------------------------
+function setupDragAndDropHandlers() {
+  let windowDragDepth = 0;
+
+  function isFileDrag(e) {
+    const dt = e.dataTransfer;
+    if (!dt) return false;
+    if (dt.types) {
+      for (let i = 0; i < dt.types.length; i++) {
+        if (dt.types[i] === 'Files') return true;
+      }
+    }
+    return false;
+  }
+
+  // 1. Global Window Drag Handlers
+  window.addEventListener('dragenter', (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    windowDragDepth++;
+    if (windowDragDepth === 1) {
+      const modalOpen = elements.inputModal && elements.inputModal.style.display !== 'none';
+      if (!modalOpen) {
+        const active = getActiveCourse();
+        if (elements.windowDragCourseLabel && active) {
+          elements.windowDragCourseLabel.textContent = `วิชาปัจจุบัน: ${active.subject} (${active.assignment})`;
+        }
+        if (elements.windowDragOverlay) {
+          elements.windowDragOverlay.style.display = 'flex';
+        }
+      }
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    windowDragDepth--;
+    if (windowDragDepth <= 0) {
+      windowDragDepth = 0;
+      if (elements.windowDragOverlay) {
+        elements.windowDragOverlay.style.display = 'none';
+      }
+    }
+  });
+
+  window.addEventListener('drop', async (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    windowDragDepth = 0;
+    if (elements.windowDragOverlay) {
+      elements.windowDragOverlay.style.display = 'none';
+    }
+
+    const files = await extractFilesFromDataTransfer(e.dataTransfer);
+    if (files && files.length > 0) {
+      switchImportMode('upload');
+      addPendingUploadFiles(files);
+      openModal();
+    }
+  });
+
+  // 2. Modal Drop Zone (#uploadDropZone)
+  if (elements.uploadDropZone) {
+    elements.uploadDropZone.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      elements.uploadDropZone.classList.add('dragover');
+    });
+
+    elements.uploadDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      elements.uploadDropZone.classList.add('dragover');
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+
+    elements.uploadDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      elements.uploadDropZone.classList.remove('dragover');
+    });
+
+    elements.uploadDropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      elements.uploadDropZone.classList.remove('dragover');
+      const files = await extractFilesFromDataTransfer(e.dataTransfer);
+      addPendingUploadFiles(files);
+    });
+  }
+
+  // 3. Drop anywhere in Import Pane Upload (#importPaneUpload)
+  if (elements.importPaneUpload) {
+    elements.importPaneUpload.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    elements.importPaneUpload.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = await extractFilesFromDataTransfer(e.dataTransfer);
+      addPendingUploadFiles(files);
+    });
+  }
+
+  // 4. File input change listener
+  if (elements.studentFilesInput) {
+    elements.studentFilesInput.addEventListener('change', (e) => {
+      addPendingUploadFiles(Array.from(e.target.files || []));
+      e.target.value = '';
+    });
+  }
+
+  // 5. Clear all selected upload files
+  if (elements.btnClearSelectedFiles) {
+    elements.btnClearSelectedFiles.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.pendingUploadFiles = [];
+      if (elements.studentFilesInput) elements.studentFilesInput.value = '';
+      renderSelectedUploadFiles();
+      showToast('ล้างรายการไฟล์ที่เลือกเรียบร้อย', 'info');
+    });
+  }
+}
+
 function addPendingUploadFiles(files) {
+  if (!files || files.length === 0) return 0;
   const allowedExts = ['py', 'ipynb', 'zip', 'html', 'htm', 'css', 'js', 'txt', 'csv', 'json'];
+  let addedCount = 0;
+  let ignoredCount = 0;
+
   files.forEach(file => {
-    const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!allowedExts.includes(ext)) return;
+    if (!file || !file.name) return;
+    if (file.name.startsWith('.') || file.name === '__MACOSX') return;
+
+    const parts = file.name.split('.');
+    const ext = (parts.length > 1 ? parts.pop() : '').toLowerCase();
+
+    if (!allowedExts.includes(ext)) {
+      ignoredCount++;
+      return;
+    }
+
     const exists = state.pendingUploadFiles.some(
       f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified
     );
     if (!exists) {
       state.pendingUploadFiles.push(file);
+      addedCount++;
     }
   });
+
   renderSelectedUploadFiles();
+
+  if (addedCount > 0) {
+    showToast(`เพิ่มไฟล์งานแล้ว ${addedCount} รายการ (รวม ${state.pendingUploadFiles.length} ไฟล์)`, 'success');
+  } else if (ignoredCount > 0 && state.pendingUploadFiles.length === 0) {
+    showToast('ไฟล์ไม่รองรับ กรุณาเลือกไฟล์ .py, .ipynb, .zip, .html, .css, .js', 'warning');
+  } else if (addedCount === 0 && state.pendingUploadFiles.length > 0) {
+    showToast('ไฟล์นี้มีอยู่ในรายการแล้ว', 'info');
+  }
+
+  return addedCount;
 }
 
 function renderSelectedUploadFiles() {
   const listEl = elements.selectedFilesList;
-  if (!listEl) return;
+  const statsBar = elements.uploadStatsBar || document.getElementById('uploadStatsBar');
+  const countEl = elements.uploadStatsCount || document.getElementById('uploadStatsCount');
+  const sizeEl = elements.uploadStatsSize || document.getElementById('uploadStatsSize');
+
+  const totalFiles = state.pendingUploadFiles.length;
+  const totalBytes = state.pendingUploadFiles.reduce((acc, f) => acc + (f.size || 0), 0);
 
   if (state.importMode === 'upload' && elements.parsedStatsLabel) {
-    elements.parsedStatsLabel.innerText = `เลือกไฟล์พร้อมนำเข้า: ${state.pendingUploadFiles.length} ไฟล์`;
+    elements.parsedStatsLabel.innerText = `เลือกไฟล์พร้อมนำเข้า: ${totalFiles} ไฟล์ (${formatFileSize(totalBytes)})`;
   }
 
-  if (state.pendingUploadFiles.length === 0) {
-    listEl.style.display = 'none';
-    listEl.innerHTML = '';
+  if (totalFiles === 0) {
+    if (listEl) {
+      listEl.style.display = 'none';
+      listEl.innerHTML = '';
+    }
+    if (statsBar) statsBar.style.display = 'none';
+    if (elements.btnStartFetch) {
+      elements.btnStartFetch.classList.remove('has-pending-files');
+    }
     return;
   }
 
+  if (statsBar) {
+    statsBar.style.display = 'flex';
+    if (countEl) countEl.innerText = `เลือกไฟล์แล้ว ${totalFiles} ไฟล์`;
+    if (sizeEl) sizeEl.innerText = `(${formatFileSize(totalBytes)})`;
+  }
+
+  if (elements.btnStartFetch) {
+    elements.btnStartFetch.classList.add('has-pending-files');
+  }
+
+  if (!listEl) return;
   listEl.style.display = 'flex';
   listEl.innerHTML = '';
 
@@ -928,6 +1234,8 @@ function renderSelectedUploadFiles() {
     else if (ext === 'ipynb') icon = '📓';
     else if (ext === 'zip') icon = '📦';
     else if (ext === 'html' || ext === 'htm') icon = '🌐';
+    else if (ext === 'js') icon = '⚡';
+    else if (ext === 'css') icon = '🎨';
 
     const chip = document.createElement('div');
     chip.className = 'selected-file-chip';
@@ -935,11 +1243,12 @@ function renderSelectedUploadFiles() {
       <span class="selected-file-info">
         <span>${icon}</span>
         <span class="selected-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
-        <span class="selected-file-size">(${formatFileSize(file.size)})</span>
+        <span class="selected-file-size">(${formatFileSize(file.size || 0)})</span>
       </span>
-      <button type="button" class="btn-remove-upload-file" title="เอาไฟล์นี้ออก">×</button>
+      <button type="button" class="btn-remove-upload-file" title="เอาไฟล์นี้ออก">&times;</button>
     `;
-    chip.querySelector('.btn-remove-upload-file').addEventListener('click', () => {
+    chip.querySelector('.btn-remove-upload-file').addEventListener('click', (e) => {
+      e.stopPropagation();
       state.pendingUploadFiles.splice(idx, 1);
       renderSelectedUploadFiles();
     });

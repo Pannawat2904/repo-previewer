@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261030-3">
+  <link rel="stylesheet" href="/static/app.css?v=20261030-5">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -457,6 +457,18 @@ https://github.com/patvikan24-oss/my-profil-013
             <input type="text" id="singleStudentNameInput" class="single-student-name-input" placeholder="ระบุชื่อนักเรียน (เช่น สมชาย ม.4/1)..." style="display: none;">
           </div>
 
+          <!-- Stats & Clear bar -->
+          <div id="uploadStatsBar" class="upload-stats-bar" style="display: none;">
+            <div class="upload-stats-info">
+              <span id="uploadStatsCount" class="upload-stats-count">เลือกไฟล์แล้ว 0 ไฟล์</span>
+              <span id="uploadStatsSize" class="upload-stats-size">(0 B)</span>
+            </div>
+            <button type="button" id="btnClearSelectedFiles" class="btn-clear-upload" title="ล้างไฟล์ทั้งหมดที่เลือก">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span>ล้างทั้งหมด</span>
+            </button>
+          </div>
+
           <div id="selectedFilesList" class="selected-files-list"></div>
         </div>
       </div>
@@ -472,6 +484,32 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261030-3"></script>
+  <!-- Global Window Drag-and-Drop Overlay -->
+  <div id="windowDragOverlay" class="window-drag-overlay" style="display: none;">
+    <div class="window-drag-content">
+      <div class="window-drag-icon-pulse">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+      </div>
+      <h2 class="window-drag-title">วางไฟล์ที่นี่เพื่อนำเข้าตรวจงาน</h2>
+      <p class="window-drag-course" id="windowDragCourseLabel">วิชาปัจจุบัน: การเขียนโปรแกรมเชิงวัตถุเบื้องต้น (Python OOP)</p>
+      <div class="window-drag-badges">
+        <span class="drag-badge">🐍 Python (.py)</span>
+        <span class="drag-badge">📓 Jupyter (.ipynb)</span>
+        <span class="drag-badge">📦 Zip (.zip)</span>
+        <span class="drag-badge">🌐 Web (.html/.js)</span>
+        <span class="drag-badge">📁 โฟลเดอร์งาน</span>
+      </div>
+      <p class="window-drag-sub">ปล่อยเมาส์เพื่อนำเข้าไฟล์เข้าสู่ระบบทันที (รองรับทั้งไฟล์เดี่ยว หลายไฟล์ หรือโฟลเดอร์)</p>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script src="/static/app.js?v=20261030-5"></script>
 </body>
 </html>
