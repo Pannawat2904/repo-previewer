@@ -186,8 +186,8 @@ function detectCourseTheme(subject) {
   if (s.includes('python') || s.includes('oop') || s.includes('วัตถุ') || s.includes('ไพทอน')) {
     return {
       type: 'python',
-      icon: '🐍',
-      badge: 'Python & OOP (.py / .ipynb / .zip)',
+      svgIcon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
+      badge: 'Python · OOP',
       defaultImport: 'upload',
       accentClass: 'theme-python',
     };
@@ -195,19 +195,29 @@ function detectCourseTheme(subject) {
   if (s.includes('เว็บ') || s.includes('web') || s.includes('html') || s.includes('frontend')) {
     return {
       type: 'web',
-      icon: '🌐',
-      badge: 'พัฒนาเว็บไซต์ (HTML / CSS / JS / GitHub)',
+      svgIcon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>`,
+      badge: 'Web · HTML/CSS/JS',
       defaultImport: 'github',
       accentClass: 'theme-web',
     };
   }
   return {
     type: 'general',
-    icon: '🎓',
-    badge: 'รายวิชาตรวจงานโค้ด & โปรเจกต์',
+    svgIcon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`,
+    badge: 'Code Project',
     defaultImport: 'github',
     accentClass: 'theme-general',
   };
+}
+
+function setHubSidebarMode(isHubScreen) {
+  const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
+  if (!sidebar) return;
+  if (isHubScreen) {
+    sidebar.classList.add('hub-auto-hidden');
+  } else {
+    sidebar.classList.remove('hub-auto-hidden');
+  }
 }
 
 function renderCourseSelect() {
@@ -235,6 +245,11 @@ function renderCourseHub() {
   const grid = elements.courseHubGrid || document.getElementById('courseHubGrid');
   if (!grid) return;
 
+  // ซ่อน Sidebar อัตโนมัติเมื่อแสดงหน้า Home Hub และยังไม่ได้เปิดหน้าตรวจงานนักเรียน
+  if (elements.blankState && elements.blankState.style.display !== 'none') {
+    setHubSidebarMode(true);
+  }
+
   grid.innerHTML = '';
 
   state.courses.forEach(course => {
@@ -250,11 +265,11 @@ function renderCourseHub() {
     card.innerHTML = `
       <div class="course-hub-card-top">
         <div class="course-hub-icon-wrap">
-          <span class="course-hub-icon">${theme.icon}</span>
+          <span class="course-hub-icon">${theme.svgIcon}</span>
           <span class="course-hub-type-badge">${escapeHtml(theme.badge)}</span>
         </div>
         <div class="course-hub-top-right">
-          ${isActive ? '<span class="hub-active-pill">● เลือกอยู่</span>' : ''}
+          ${isActive ? '<span class="hub-active-pill"><span class="hub-active-dot"></span>เลือกอยู่</span>' : ''}
           ${
             state.courses.length > 1
               ? `<button type="button" class="btn-hub-delete" data-course-id="${escapeHtml(course.id)}" title="ลบรายวิชานี้">&times;</button>`
@@ -266,37 +281,41 @@ function renderCourseHub() {
       <div class="course-hub-card-body">
         <h3 class="course-hub-title">${escapeHtml(course.subject)}</h3>
         <div class="course-hub-assign-row">
-          <span class="course-hub-assign-tag">📌 ${escapeHtml(course.assignment)}</span>
+          <span class="course-hub-assign-tag">${escapeHtml(course.assignment)}</span>
         </div>
       </div>
 
-      <div class="course-hub-stats">
-        <div class="course-hub-stats-row">
-          <span>👥 งานนักเรียน <strong>${total}</strong> คน</span>
-          <span>✓ ตรวจแล้ว <strong>${viewed} / ${total}</strong> (${pct}%)</span>
+      <div class="course-hub-card-footer">
+        <div class="course-hub-meta">
+          <div class="course-hub-stats-row">
+            <span>งานนักเรียน <strong>${total}</strong> คน</span>
+            ${total > 0 ? `<span>ตรวจแล้ว <strong>${viewed}/${total}</strong> (${pct}%)</span>` : '<span class="meta-muted">ยังไม่มีงานนำเข้า</span>'}
+          </div>
+          <div class="course-hub-progress-track">
+            <div class="course-hub-progress-fill" style="width: ${pct}%;"></div>
+          </div>
         </div>
-        <div class="course-hub-progress-track">
-          <div class="course-hub-progress-fill" style="width: ${pct}%;"></div>
-        </div>
-      </div>
 
-      <div class="course-hub-actions">
-        ${
-          total > 0
-            ? `
-              <button type="button" class="btn btn-primary btn-hub-open" data-course-id="${escapeHtml(course.id)}">
-                ▶️ เข้าตรวจงาน (${total} คน)
-              </button>
-              <button type="button" class="btn btn-secondary btn-hub-import" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
-                + นำเข้าเพิ่ม
-              </button>
-            `
-            : `
-              <button type="button" class="btn btn-primary btn-hub-import" style="width: 100%;" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
-                ${theme.type === 'python' ? '📂 อัปโหลดไฟล์ Python / นำเข้างาน' : '🔗 นำเข้าลิงก์ GitHub / อัปโหลดไฟล์'}
-              </button>
-            `
-        }
+        <div class="course-hub-actions">
+          ${
+            total > 0
+              ? `
+                <button type="button" class="btn-hub-action primary btn-hub-open" data-course-id="${escapeHtml(course.id)}">
+                  <span>เข้าตรวจงาน (${total})</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+                <button type="button" class="btn-hub-action subtle btn-hub-import" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
+                  + นำเข้าเพิ่ม
+                </button>
+              `
+              : `
+                <button type="button" class="btn-hub-action primary btn-hub-import" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
+                  <span>${theme.type === 'python' ? 'อัปโหลดไฟล์ Python / นำเข้างาน' : 'นำเข้าลิงก์ GitHub / อัปโหลดไฟล์'}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              `
+          }
+        </div>
       </div>
     `;
 
@@ -342,56 +361,99 @@ function renderCourseHub() {
     grid.appendChild(card);
   });
 
-  // การ์ด "+ เพิ่มรายวิชา หรือ งานย่อยใหม่"
+  // การ์ด "+ เพิ่มรายวิชา หรือ งานย่อยใหม่" แบบมินิมอล (คลิกเพื่อเปิดฟอร์ม)
   const addCard = document.createElement('div');
   addCard.className = 'course-hub-card course-hub-add-card';
   addCard.innerHTML = `
-    <div class="hub-add-header">
-      <span class="hub-add-icon">➕</span>
-      <div>
-        <h3>สร้างรายวิชา / งานย่อยใหม่</h3>
-        <p>แยกห้องเรียนหรือการบ้านแต่ละชิ้นออกจากกัน</p>
+    <div id="hubAddMinimalView" class="hub-add-minimal-view">
+      <div class="hub-add-plus-circle">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </div>
+      <div class="hub-add-minimal-text">
+        <h3>เพิ่มรายวิชา / ชิ้นงานใหม่</h3>
+        <p>สร้างห้องเรียนหรือแยกชิ้นงานตรวจใหม่</p>
+      </div>
+      <div class="hub-preset-chips">
+        <button type="button" class="hub-preset-chip" data-subject="การเขียนโปรแกรมเชิงวัตถุเบื้องต้น (Python OOP)" data-assign="งานที่ 2: Class & Inheritance">
+          + วิชา Python OOP
+        </button>
+        <button type="button" class="hub-preset-chip" data-subject="การพัฒนาเว็บไซต์ (Web)" data-assign="งานที่ 2: Responsive Web">
+          + วิชาพัฒนาเว็บ
+        </button>
       </div>
     </div>
 
-    <div class="hub-preset-chips">
-      <button type="button" class="hub-preset-chip" data-subject="การเขียนโปรแกรมเชิงวัตถุเบื้องต้น (Python OOP)" data-assign="งานที่ 2: Class & Inheritance">
-        🐍 + งานวิชา Python OOP
-      </button>
-      <button type="button" class="hub-preset-chip" data-subject="การพัฒนาเว็บไซต์ (Web)" data-assign="งานที่ 2: Responsive Web">
-        🌐 + งานวิชาพัฒนาเว็บ
-      </button>
-    </div>
-
-    <div class="hub-add-inputs">
-      <input type="text" id="hubNewSubjectInput" class="course-input" placeholder="ชื่อรายวิชา (เช่น วิชา Python OOP ม.5)">
-      <input type="text" id="hubNewAssignInput" class="course-input" placeholder="ชื่องานย่อย (เช่น งานที่ 1, สอบกลางภาค)">
-      <button type="button" id="btnHubCreateCourse" class="btn btn-primary" style="width: 100%; margin-top: 2px;">
-        + สร้างรายวิชาและชิ้นงานนี้
-      </button>
+    <div id="hubAddFormView" class="hub-add-form-view" style="display: none;">
+      <div class="hub-add-form-header">
+        <h4>สร้างรายวิชา / งานย่อยใหม่</h4>
+        <button type="button" id="btnCloseHubAddForm" class="btn-hub-delete" title="ยกเลิก">&times;</button>
+      </div>
+      <div class="hub-add-inputs">
+        <input type="text" id="hubNewSubjectInput" class="course-input" placeholder="ชื่อรายวิชา (เช่น Python OOP ม.5)">
+        <input type="text" id="hubNewAssignInput" class="course-input" placeholder="ชื่องานย่อย (เช่น งานที่ 1, สอบกลางภาค)">
+        <button type="button" id="btnHubCreateCourse" class="btn-hub-action primary" style="width: 100%; justify-content: center;">
+          สร้างรายวิชานี้
+        </button>
+      </div>
     </div>
   `;
 
+  const minimalView = addCard.querySelector('#hubAddMinimalView');
+  const formView = addCard.querySelector('#hubAddFormView');
   const subInput = addCard.querySelector('#hubNewSubjectInput');
   const assignInput = addCard.querySelector('#hubNewAssignInput');
-  addCard.querySelectorAll('.hub-preset-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      if (subInput) subInput.value = chip.dataset.subject || '';
-      if (assignInput) {
-        assignInput.value = chip.dataset.assign || 'งานที่ 1';
+  const btnCloseForm = addCard.querySelector('#btnCloseHubAddForm');
+
+  const openAddForm = (presetSubject = '', presetAssign = 'งานที่ 1') => {
+    if (minimalView) minimalView.style.display = 'none';
+    if (formView) formView.style.display = 'flex';
+    addCard.classList.add('form-open');
+    if (subInput) {
+      subInput.value = presetSubject;
+      if (!presetSubject) subInput.focus();
+    }
+    if (assignInput) {
+      assignInput.value = presetAssign;
+      if (presetSubject) {
         assignInput.focus();
         assignInput.select();
       }
+    }
+  };
+
+  addCard.addEventListener('click', (e) => {
+    if (formView && formView.style.display !== 'none') return;
+    if (e.target.closest('.hub-preset-chip')) return;
+    openAddForm('', 'งานที่ 1');
+  });
+
+  if (btnCloseForm) {
+    btnCloseForm.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (formView) formView.style.display = 'none';
+      if (minimalView) minimalView.style.display = 'flex';
+      addCard.classList.remove('form-open');
+    });
+  }
+
+  addCard.querySelectorAll('.hub-preset-chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openAddForm(chip.dataset.subject || '', chip.dataset.assign || 'งานที่ 1');
     });
   });
 
   const btnCreate = addCard.querySelector('#btnHubCreateCourse');
   if (btnCreate) {
-    btnCreate.addEventListener('click', () => {
+    btnCreate.addEventListener('click', (e) => {
+      e.stopPropagation();
       const subject = (subInput?.value || '').trim();
       const assignment = (assignInput?.value || '').trim() || 'งานที่ 1';
       if (!subject) {
-        alert('กรุณาระบุชื่อรายวิชา หรือคลิกปุ่มลัดเลือกวิชาด้านบน');
+        alert('กรุณาระบุชื่อรายวิชา');
         subInput?.focus();
         return;
       }
@@ -883,7 +945,12 @@ function toggleMobileSidebar() {
     }
   } else {
     // Desktop Fullscreen/Collapse toggle
-    sidebar.classList.toggle('collapsed');
+    if (sidebar.classList.contains('hub-auto-hidden')) {
+      sidebar.classList.remove('hub-auto-hidden');
+      sidebar.classList.remove('collapsed');
+    } else {
+      sidebar.classList.toggle('collapsed');
+    }
   }
 }
 
@@ -1150,6 +1217,7 @@ async function handleStartFetch() {
     syncActiveCourseState();
     renderCourseSelect();
     closeModal();
+    setHubSidebarMode(false);
     renderStudentsList();
     updateViewedStats();
 
@@ -1234,6 +1302,7 @@ async function handleStartFileUpload() {
     syncActiveCourseState();
     renderCourseSelect();
     closeModal();
+    setHubSidebarMode(false);
     renderStudentsList();
     updateViewedStats();
 
@@ -1483,6 +1552,7 @@ async function selectStudent(index) {
   }
 
   // อัปเดต UI ให้แสดง workspace พร้อมแอนิเมชันนุ่มนวล (ข้ามการบังคับ reflow บนมือถือเพื่อให้สลับหน้าได้ทันที)
+  setHubSidebarMode(false);
   elements.blankState.style.display = 'none';
   elements.studentWorkspace.style.display = 'flex';
   if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'flex';
