@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261030-2">
+  <link rel="stylesheet" href="/static/app.css?v=20261030-3">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -151,31 +151,7 @@
         <div class="sidebar-header">
           <!-- Multi-Subject & Assignment Switcher -->
           <div class="course-switcher-box">
-            <div class="course-switcher-row">
-              <select id="courseSelect" class="course-select" title="สลับรายวิชาหรือชิ้นงานที่กำลังตรวจ"></select>
-              <button id="btnToggleAddCourse" class="btn-course-mini" title="เพิ่มวิชาหรือชิ้นงานใหม่">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-              </button>
-              <button id="btnDeleteCourse" class="btn-course-mini btn-course-danger" title="ลบรายการวิชานี้">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-              </button>
-            </div>
-
-            <!-- Inline Quick Add Course / Assignment Form -->
-            <div id="courseCreateForm" class="course-create-form" style="display: none;">
-              <input type="text" id="newCourseSubjectInput" class="course-input" placeholder="ชื่อวิชา (เช่น Python OOP)">
-              <input type="text" id="newCourseAssignInput" class="course-input" placeholder="ชื่องานย่อย (เช่น งานที่ 1)">
-              <div class="course-create-btns">
-                <button type="button" id="btnCancelAddCourse" class="btn btn-secondary btn-sm">ยกเลิก</button>
-                <button type="button" id="btnConfirmAddCourse" class="btn btn-primary btn-sm">สร้าง</button>
-              </div>
-            </div>
+            <select id="courseSelect" class="course-select" title="สลับรายวิชาหรือชิ้นงานที่กำลังตรวจ"></select>
           </div>
 
           <div class="sidebar-title-row">
@@ -496,6 +472,6 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261030-2"></script>
+  <script src="/static/app.js?v=20261030-3"></script>
 </body>
 </html>

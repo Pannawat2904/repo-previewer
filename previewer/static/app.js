@@ -2,7 +2,7 @@
  * Repo Previewer - Frontend JavaScript Logic
  */
 
-// Application State
+// Application State (สามารถเพิ่มหรือแก้ไขรายวิชา/งานย่อยได้ที่ courses ด้านล่างนี้โดยตรง)
 const state = {
   courses: [
     {
@@ -44,13 +44,6 @@ let pyodideReadyPromise = null;
 // DOM Elements
 const elements = {
   courseSelect: document.getElementById('courseSelect'),
-  btnToggleAddCourse: document.getElementById('btnToggleAddCourse'),
-  btnDeleteCourse: document.getElementById('btnDeleteCourse'),
-  courseCreateForm: document.getElementById('courseCreateForm'),
-  newCourseSubjectInput: document.getElementById('newCourseSubjectInput'),
-  newCourseAssignInput: document.getElementById('newCourseAssignInput'),
-  btnCancelAddCourse: document.getElementById('btnCancelAddCourse'),
-  btnConfirmAddCourse: document.getElementById('btnConfirmAddCourse'),
   modalActiveCourseLabel: document.getElementById('modalActiveCourseLabel'),
   courseHubGrid: document.getElementById('courseHubGrid'),
   btnOpenCourseHub: document.getElementById('btnOpenCourseHub'),
@@ -272,11 +265,6 @@ function renderCourseHub() {
         </div>
         <div class="course-hub-top-right">
           ${isActive ? '<span class="hub-active-pill"><span class="hub-active-dot"></span>เลือกอยู่</span>' : ''}
-          ${
-            state.courses.length > 1
-              ? `<button type="button" class="btn-hub-delete" data-course-id="${escapeHtml(course.id)}" title="ลบรายวิชานี้">&times;</button>`
-              : ''
-          }
         </div>
       </div>
 
@@ -352,149 +340,8 @@ function renderCourseHub() {
       });
     }
 
-    const btnDel = card.querySelector('.btn-hub-delete');
-    if (btnDel) {
-      btnDel.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteCourseById(course.id);
-      });
-    }
-
     grid.appendChild(card);
   });
-
-  // การ์ด "+ เพิ่มรายวิชา หรือ งานย่อยใหม่" แบบมินิมอล (คลิกเพื่อเปิดฟอร์ม)
-  const addCard = document.createElement('div');
-  addCard.className = 'course-hub-card course-hub-add-card';
-  addCard.innerHTML = `
-    <div id="hubAddMinimalView" class="hub-add-minimal-view">
-      <div class="hub-add-plus-circle">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </div>
-      <div class="hub-add-minimal-text">
-        <h3>เพิ่มรายวิชา / ชิ้นงานใหม่</h3>
-        <p>สร้างห้องเรียนหรือแยกชิ้นงานตรวจใหม่</p>
-      </div>
-      <div class="hub-preset-chips">
-        <button type="button" class="hub-preset-chip" data-subject="การเขียนโปรแกรมเชิงวัตถุเบื้องต้น (Python OOP)" data-assign="งานที่ 2: Class & Inheritance">
-          + วิชา Python OOP
-        </button>
-        <button type="button" class="hub-preset-chip" data-subject="การพัฒนาเว็บไซต์ (Web)" data-assign="งานที่ 2: Responsive Web">
-          + วิชาพัฒนาเว็บ
-        </button>
-      </div>
-    </div>
-
-    <div id="hubAddFormView" class="hub-add-form-view" style="display: none;">
-      <div class="hub-add-form-header">
-        <h4>สร้างรายวิชา / งานย่อยใหม่</h4>
-        <button type="button" id="btnCloseHubAddForm" class="btn-hub-delete" title="ยกเลิก">&times;</button>
-      </div>
-      <div class="hub-add-inputs">
-        <input type="text" id="hubNewSubjectInput" class="course-input" placeholder="ชื่อรายวิชา (เช่น Python OOP ม.5)">
-        <input type="text" id="hubNewAssignInput" class="course-input" placeholder="ชื่องานย่อย (เช่น งานที่ 1, สอบกลางภาค)">
-        <button type="button" id="btnHubCreateCourse" class="btn-hub-action primary" style="width: 100%; justify-content: center;">
-          สร้างรายวิชานี้
-        </button>
-      </div>
-    </div>
-  `;
-
-  const minimalView = addCard.querySelector('#hubAddMinimalView');
-  const formView = addCard.querySelector('#hubAddFormView');
-  const subInput = addCard.querySelector('#hubNewSubjectInput');
-  const assignInput = addCard.querySelector('#hubNewAssignInput');
-  const btnCloseForm = addCard.querySelector('#btnCloseHubAddForm');
-
-  const openAddForm = (presetSubject = '', presetAssign = 'งานที่ 1') => {
-    if (minimalView) minimalView.style.display = 'none';
-    if (formView) formView.style.display = 'flex';
-    addCard.classList.add('form-open');
-    if (subInput) {
-      subInput.value = presetSubject;
-      if (!presetSubject) subInput.focus();
-    }
-    if (assignInput) {
-      assignInput.value = presetAssign;
-      if (presetSubject) {
-        assignInput.focus();
-        assignInput.select();
-      }
-    }
-  };
-
-  addCard.addEventListener('click', (e) => {
-    if (formView && formView.style.display !== 'none') return;
-    if (e.target.closest('.hub-preset-chip')) return;
-    openAddForm('', 'งานที่ 1');
-  });
-
-  if (btnCloseForm) {
-    btnCloseForm.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (formView) formView.style.display = 'none';
-      if (minimalView) minimalView.style.display = 'flex';
-      addCard.classList.remove('form-open');
-    });
-  }
-
-  addCard.querySelectorAll('.hub-preset-chip').forEach(chip => {
-    chip.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openAddForm(chip.dataset.subject || '', chip.dataset.assign || 'งานที่ 1');
-    });
-  });
-
-  const btnCreate = addCard.querySelector('#btnHubCreateCourse');
-  if (btnCreate) {
-    btnCreate.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const subject = (subInput?.value || '').trim();
-      const assignment = (assignInput?.value || '').trim() || 'งานที่ 1';
-      if (!subject) {
-        alert('กรุณาระบุชื่อรายวิชา');
-        subInput?.focus();
-        return;
-      }
-      createNewCourseAndSelect(subject, assignment);
-    });
-  }
-
-  grid.appendChild(addCard);
-}
-
-function createNewCourseAndSelect(subject, assignment) {
-  syncActiveCourseState();
-  const newId = `course-${Date.now()}`;
-  state.courses.push({
-    id: newId,
-    subject,
-    assignment: assignment || 'งานที่ 1',
-    students: [],
-    currentIndex: -1,
-    bulkLinksText: '',
-  });
-  switchCourse(newId);
-}
-
-function deleteCourseById(courseId) {
-  const target = state.courses.find(c => c.id === courseId);
-  if (!target || state.courses.length <= 1) return;
-  if (!confirm(`ต้องการลบวิชา "${target.subject} — ${target.assignment}" ออกจากระบบตรวจงานหรือไม่?`)) return;
-
-  const idx = state.courses.findIndex(c => c.id === courseId);
-  if (idx >= 0) state.courses.splice(idx, 1);
-
-  if (state.activeCourseId === courseId) {
-    const nextCourse = state.courses[0];
-    state.activeCourseId = '';
-    switchCourse(nextCourse.id);
-  } else {
-    renderCourseSelect();
-  }
 }
 
 function openCourseHub() {
@@ -547,44 +394,6 @@ function switchCourse(courseId) {
   }
 }
 
-function handleConfirmAddCourse() {
-  const subject = (elements.newCourseSubjectInput?.value || '').trim();
-  const assignment = (elements.newCourseAssignInput?.value || '').trim() || 'งานที่ 1';
-  if (!subject) {
-    alert('กรุณาระบุชื่อรายวิชา');
-    elements.newCourseSubjectInput?.focus();
-    return;
-  }
-
-  if (elements.newCourseSubjectInput) elements.newCourseSubjectInput.value = '';
-  if (elements.newCourseAssignInput) elements.newCourseAssignInput.value = '';
-  if (elements.courseCreateForm) elements.courseCreateForm.style.display = 'none';
-
-  createNewCourseAndSelect(subject, assignment);
-}
-
-function handleDeleteActiveCourse() {
-  const active = getActiveCourse();
-  if (!active) return;
-
-  if (state.courses.length <= 1) {
-    if (!confirm(`ต้องการล้างรายชื่อนักเรียนในวิชา "${active.subject} — ${active.assignment}" หรือไม่?`)) return;
-    state.students = [];
-    state.currentIndex = -1;
-    active.students = [];
-    active.currentIndex = -1;
-    active.bulkLinksText = '';
-    if (elements.bulkLinksTextarea) elements.bulkLinksTextarea.value = '';
-    renderCourseSelect();
-    renderStudentsList();
-    updateViewedStats();
-    openCourseHub();
-    return;
-  }
-
-  deleteCourseById(active.id);
-}
-
 function setupEventListeners() {
   // ปุ่มเปิดหน้าเมนูเลือกวิชา (Course Hub)
   if (elements.btnOpenCourseHub) {
@@ -600,30 +409,11 @@ function setupEventListeners() {
     brandTitle.addEventListener('click', openCourseHub);
   }
 
-  // Course switcher & creation
+  // Course switcher
   if (elements.courseSelect) {
     elements.courseSelect.addEventListener('change', (e) => {
       switchCourse(e.target.value);
     });
-  }
-  if (elements.btnToggleAddCourse) {
-    elements.btnToggleAddCourse.addEventListener('click', () => {
-      if (!elements.courseCreateForm) return;
-      const isVisible = elements.courseCreateForm.style.display !== 'none';
-      elements.courseCreateForm.style.display = isVisible ? 'none' : 'flex';
-      if (!isVisible) elements.newCourseSubjectInput?.focus();
-    });
-  }
-  if (elements.btnCancelAddCourse) {
-    elements.btnCancelAddCourse.addEventListener('click', () => {
-      if (elements.courseCreateForm) elements.courseCreateForm.style.display = 'none';
-    });
-  }
-  if (elements.btnConfirmAddCourse) {
-    elements.btnConfirmAddCourse.addEventListener('click', handleConfirmAddCourse);
-  }
-  if (elements.btnDeleteCourse) {
-    elements.btnDeleteCourse.addEventListener('click', handleDeleteActiveCourse);
   }
 
   // Modal toggling

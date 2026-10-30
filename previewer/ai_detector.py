@@ -439,3 +439,4 @@ def analyze_repository_ai_usage(repo_dir: Path) -> Dict[str, Any]:
         "viva_questions": all_viva_questions[:5],
         "fingerprint": fingerprint_tokens[:250],
     }
+
