@@ -41,7 +41,16 @@ from previewer.inspect import inspect_repository
 from previewer.links import RepoItem, normalize_github_url, parse_bulk_links, parse_input_line
 from previewer.python_inspector import analyze_python_source, inspect_python_project, parse_ipynb_content
 from previewer.serve import CONSOLE_INJECT_SCRIPT, find_index_html, server_manager
-from previewer.storage import get_review, load_all_reviews, save_review
+from previewer.storage import (
+    get_assignment,
+    get_review,
+    load_all_reviews,
+    load_config,
+    save_assignment,
+    save_config,
+    save_review,
+)
+from previewer.ai_grader import grade_student_code, resolve_gemini_api_key
 
 logging.basicConfig(
     level=logging.INFO,
@@ -182,6 +191,27 @@ class UploadBatchRequest(BaseModel):
     files: List[UploadedFileItem]
     group_as_single_student: bool = False
     single_student_name: Optional[str] = None
+
+
+class AssignmentSaveRequest(BaseModel):
+    title: Optional[str] = "โจทย์ประจำงาน"
+    prompt: str
+    max_score: Optional[int] = 10
+
+
+class AssignmentGradeRequest(BaseModel):
+    course_id: Optional[str] = "course-python-oop-1"
+    owner: Optional[str] = None
+    repo: Optional[str] = None
+    code: Optional[str] = None
+    filename: Optional[str] = None
+    prompt: Optional[str] = None
+    api_key: Optional[str] = None
+    student_name: Optional[str] = None
+
+
+class GeminiKeyRequest(BaseModel):
+    api_key: str
 
 
 # -------------------------------------------------------------
@@ -357,6 +387,123 @@ async def api_analyze_python(req: PythonAnalyzeRequest):
     if req.filename.lower().endswith(".ipynb"):
         return parse_ipynb_content(req.code, req.filename)
     return analyze_python_source(req.code, req.filename)
+
+
+@app.post("/api/assignment/grade")
+async def api_grade_assignment(req: AssignmentGradeRequest):
+    """ตรวจงานนักเรียนตามโจทย์ด้วย AI หรือ AST Fallback"""
+    prompt = req.prompt
+    if not prompt or not prompt.strip():
+        asg = get_assignment(req.course_id or "course-python-oop-1")
+        prompt = asg.get("prompt", "")
+
+    code = req.code
+    resolved_filename = req.filename or "work4_product_class.py"
+
+    # หากไม่ได้ส่ง code มาตรง ๆ ให้ไปดึงจากไฟล์ของ repo ที่แคชไว้
+    if not code and req.owner and req.repo:
+        repo_dir = await ensure_repo_cached(req.owner, req.repo)
+        py_info = inspect_python_project(repo_dir)
+        files = py_info.get("files", [])
+        if files:
+            target_file = None
+            if req.filename:
+                target_file = next((f for f in files if f["name"].lower() == req.filename.lower() or req.filename.lower() in f["path"].lower()), None)
+            if not target_file:
+                target_file = files[0]
+            code = target_file.get("content", "")
+            resolved_filename = target_file.get("path", resolved_filename)
+
+    if not code:
+        raise HTTPException(status_code=400, detail="ไม่พบโค้ด Python สำหรับตรวจงาน")
+
+    result = await grade_student_code(
+        prompt=prompt,
+        code=code,
+        api_key=req.api_key,
+        student_name=req.student_name or (f"{req.owner}/{req.repo}" if req.owner and req.repo else "นักเรียน"),
+        filename=resolved_filename,
+    )
+    return result
+
+
+@app.get("/api/assignment/{course_id}")
+async def api_get_assignment(course_id: str):
+    """ดึงข้อมูลโจทย์และเกณฑ์ตรวจประจำวิชา"""
+    return get_assignment(course_id)
+
+
+@app.post("/api/assignment/{course_id}")
+async def api_save_assignment(course_id: str, req: AssignmentSaveRequest):
+    """บันทึกโจทย์และเกณฑ์ตรวจประจำวิชา"""
+    data = {
+        "course_id": course_id,
+        "title": req.title or "โจทย์ประจำงาน",
+        "prompt": req.prompt,
+        "max_score": req.max_score or 10,
+    }
+    return save_assignment(course_id, data)
+
+
+
+@app.get("/api/settings/gemini-key")
+async def api_get_gemini_key_status():
+    """ตรวจสอบสถานะ Gemini API Key"""
+    key = resolve_gemini_api_key()
+    if not key:
+        return {"configured": False, "masked": ""}
+    masked = key[:6] + "..." + key[-4:] if len(key) >= 12 else "AIza...****"
+    return {"configured": True, "masked": masked}
+
+
+@app.post("/api/settings/gemini-key")
+async def api_save_gemini_key(req: GeminiKeyRequest):
+    """บันทึกและตรวจสอบ Gemini API Key"""
+    clean_key = req.api_key.strip()
+    if not clean_key:
+        save_config({"gemini_api_key": ""})
+        return {"status": "cleared", "message": "ลบ API Key เรียบร้อยแล้ว"}
+
+    # บันทึกคีย์ไว้ก่อนเสมอ
+    save_config({"gemini_api_key": clean_key})
+    masked = clean_key[:6] + "..." + clean_key[-4:] if len(clean_key) >= 12 else "AIza...****"
+
+    test_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
+    payload = {
+        "contents": [{"parts": [{"text": "Ping"}]}],
+        "generationConfig": {"maxOutputTokens": 5},
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(test_url, json=payload)
+            if resp.status_code == 200:
+                return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ!", "masked": masked}
+            elif resp.status_code in (400, 403):
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+                resp2 = await client.post(fallback_url, json=payload)
+                if resp2.status_code == 200:
+                    return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ (ผ่าน Gemini 1.5 Flash)!", "masked": masked}
+                
+                # หากติด policy หรือ error ให้บันทึกไว้และแจ้งเตือนอย่างชัดเจน ไม่โยน 400
+                return {
+                    "status": "saved_with_warning",
+                    "message": f"บันทึก API Key แล้ว ({resp.text.strip()[:120]})",
+                    "masked": masked,
+                }
+            else:
+                return {
+                    "status": "saved_with_warning",
+                    "message": f"บันทึก API Key แล้ว (HTTP {resp.status_code})",
+                    "masked": masked,
+                }
+        except Exception as e:
+            return {
+                "status": "saved_with_warning",
+                "message": f"บันทึก API Key แล้ว (ไม่สามารถทดสอบ ping ไปยัง Google ได้ในขณะนี้: {e})",
+                "masked": masked,
+            }
+
+
 
 
 def _sanitize_slug(text: str, idx: int = 1) -> str:

@@ -4,6 +4,16 @@ venv/
 ENV/
 env/
 
+# Security & Secrets (Never commit credentials or API keys)
+.env
+.env.*
+*.env
+data/config.json
+data/config*.json
+*.pem
+*.key
+*.secret
+
 # Python Cache & Bytecode
 __pycache__/
 *.py[cod]
