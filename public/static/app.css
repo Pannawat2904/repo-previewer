@@ -4351,3 +4351,245 @@ kbd {
   line-height: 1.5;
 }
 
+/* ============================================================
+   Side-by-Side Prompt Comparison & Assignment Quick Switcher
+   ============================================================ */
+.py-studio-split.has-prompt {
+  grid-template-columns: 310px 1.15fr 0.85fr;
+}
+
+@media (max-width: 1250px) {
+  .py-studio-split.has-prompt {
+    grid-template-columns: 280px 1fr 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .py-studio-split.has-prompt {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr 1fr;
+    overflow-y: auto;
+  }
+}
+
+.py-prompt-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: rgba(9, 14, 28, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+}
+
+.py-prompt-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-mini-header {
+  padding: 10px 12px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 9px;
+}
+
+.prompt-mini-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #93c5fd;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.prompt-mini-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  max-height: 95px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.prompt-specs-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.spec-tag {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.prompt-score-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.prompt-score-val {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #38bdf8;
+}
+
+.prompt-score-val.passed {
+  color: #22c55e;
+}
+
+.prompt-score-val.partial {
+  color: #f59e0b;
+}
+
+.prompt-score-val.failed {
+  color: #ef4444;
+}
+
+.prompt-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.prompt-actions-row button {
+  flex: 1;
+}
+
+.rubric-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rubric-mini-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+}
+
+.rubric-mini-item.passed {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.04);
+}
+
+.rubric-mini-item.failed {
+  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.rubric-mini-icon {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.rubric-mini-text {
+  flex: 1;
+}
+
+.rubric-mini-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.rubric-mini-evidence {
+  font-size: 0.74rem;
+  color: #38bdf8;
+  margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.rubric-mini-feedback {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.rubric-mini-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+/* Assignment Picker Group in Top Bar */
+.assignment-picker-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+}
+
+.picker-icon {
+  font-size: 0.85rem;
+}
+
+.assignment-picker-select {
+  background: transparent;
+  border: none;
+  color: #f8fafc;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  max-width: 200px;
+}
+
+.assignment-picker-select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.btn-picker-edit {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-picker-edit:hover {
+  background: rgba(59, 130, 246, 0.25);
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+

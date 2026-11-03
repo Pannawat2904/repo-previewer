@@ -93,12 +93,53 @@ def _extract_ast_facts(code: str) -> Dict[str, Any]:
     return facts
 
 
+def parse_prompt_specs(prompt: str) -> Dict[str, Any]:
+    """สกัดชื่อคลาส, แอตทริบิวต์, เมธอด และจำนวนอ็อบเจกต์ที่โจทย์ต้องการโดยอัตโนมัติจากข้อความโจทย์ภาษาไทย"""
+    specs: Dict[str, Any] = {
+        "class_name": None,
+        "attributes": [],
+        "methods": [],
+        "min_objects": 2,
+    }
+    if not prompt:
+        return specs
+
+    # 1. สกัดชื่อคลาส
+    m_cls = re.search(r'(?:สร้างคลาสชื่อ|class|คลาสชื่อ|คลาส)\s*[`\'"]?([A-Za-z_]\w*)[`\'"]?', prompt, re.IGNORECASE)
+    if m_cls:
+        specs["class_name"] = m_cls.group(1)
+
+    # 2. สกัด Attributes / Properties
+    m_attr = re.search(r'(?:Property\s*ได้แก่|attribute\s*[:ได้แก่]*|แอตทริบิวต์\s*[:ได้แก่]*|คุณสมบัติ\s*[:ได้แก่]*)\s*([^\n\r]+)', prompt, re.IGNORECASE)
+    if m_attr:
+        raw_attrs = m_attr.group(1)
+        raw_attrs = re.sub(r'[\(\)\[\]`\'"และ,]', ' ', raw_attrs)
+        attrs = [w.strip() for w in raw_attrs.split() if re.match(r'^[a-zA-Z_]\w*$', w.strip())]
+        specs["attributes"] = attrs
+
+    # 3. สกัด Methods
+    m_methods = re.findall(r'(?:Method\s*(?:ชื่อ)?|เมธอด\s*(?:ชื่อ)?|ฟังก์ชันในคลาส\s*)\s*[`\'"]?([A-Za-z_]\w*)\s*(?:\(\))?[`\'"]?', prompt, re.IGNORECASE)
+    if m_methods:
+        specs["methods"] = list(dict.fromkeys(m_methods))
+
+    # 4. สกัด Min Objects
+    m_objs = re.search(r'(?:สร้าง\s*Object|สร้าง\s*วัตถุ|สร้าง\s*อ็อบเจกต์).*?(\d+)', prompt, re.IGNORECASE)
+    if m_objs:
+        try:
+            specs["min_objects"] = int(m_objs.group(1))
+        except Exception:
+            specs["min_objects"] = 2
+
+    return specs
+
+
 def evaluate_with_ast_fallback(prompt: str, code: str, student_name: str = "", filename: str = "") -> Dict[str, Any]:
     """
     ระบบตรวจความถูกต้องเชิงโครงสร้าง OOP ด้วย AST (ทำงานออฟไลน์ 100% ไม่ต้องใช้ API)
-    รองรับการตรวจเกณฑ์มาตรฐานของโจทย์คลาส Product และ OOP ทั่วไป
+    รองรับการตรวจเกณฑ์แบบไดนามิกตามโจทย์ที่ครูกำหนด
     """
     facts = _extract_ast_facts(code)
+    specs = parse_prompt_specs(prompt)
     checklist = []
     score = 0
     max_score = 10
@@ -124,8 +165,8 @@ def evaluate_with_ast_fallback(prompt: str, code: str, student_name: str = "", f
             "suggested_teacher_note": f"พบ SyntaxError ({facts['syntax_error']}) โค้ดรันไม่ผ่าน (0/{max_score})",
         }
 
-    # 1. ตรวจการสร้างคลาส (เช่น Product)
-    target_class = "Product" if "product" in prompt.lower() else (facts["classes"][0]["name"] if facts["classes"] else "Class")
+    # 1. ตรวจการสร้างคลาส
+    target_class = specs.get("class_name") or ("Product" if "product" in prompt.lower() else (facts["classes"][0]["name"] if facts["classes"] else "Class"))
     found_class = next((c for c in facts["classes"] if c["name"].lower() == target_class.lower()), None)
     if found_class:
         checklist.append({
@@ -143,8 +184,8 @@ def evaluate_with_ast_fallback(prompt: str, code: str, student_name: str = "", f
             "feedback": f"ควรสร้าง class {target_class}: ตามโจทย์กำหนด",
         })
 
-    # 2. ตรวจสอบ Property / Attributes (name, price, quantity)
-    required_attrs = ["name", "price", "quantity"] if "property" in prompt.lower() or "price" in prompt.lower() else []
+    # 2. ตรวจสอบ Property / Attributes
+    required_attrs = specs.get("attributes") or (["name", "price", "quantity"] if "property" in prompt.lower() or "price" in prompt.lower() else [])
     if required_attrs and found_class:
         existing_attrs = found_class["attributes"]
         matched_attrs = [a for a in required_attrs if a in existing_attrs]
@@ -180,70 +221,107 @@ def evaluate_with_ast_fallback(prompt: str, code: str, student_name: str = "", f
         })
         score += 2
 
-    # 3. ตรวจสอบ Method (เช่น show_info)
-    target_method = "show_info" if "show_info" in prompt.lower() else "Method"
-    if found_class:
-        has_method = any(m.lower() == target_method.lower() for m in found_class["methods"])
-        if has_method:
-            checklist.append({
-                "criterion": f"สร้าง Method ชื่อ {target_method}() สำหรับแสดงรายละเอียดสินค้าและคำนวณราคารวม",
-                "passed": True,
-                "evidence": f"พบ def {target_method}(self) ภายในคลาส",
-                "feedback": "สร้าง Method ตามชื่อที่โจทย์กำหนดถูกต้อง",
-            })
-            score += 2
-        else:
-            checklist.append({
-                "criterion": f"สร้าง Method ชื่อ {target_method}() สำหรับแสดงรายละเอียดสินค้าและคำนวณราคารวม",
-                "passed": False,
-                "evidence": f"ไม่พบ def {target_method}(self) (Method ที่พบ: {found_class['methods']})",
-                "feedback": f"ควรสร้างเมธอด def {target_method}(self): เพื่อแสดงข้อมูลสินค้า",
-            })
+    # 3. ตรวจสอบ Methods
+    target_methods = specs.get("methods") or (["show_info"] if "show_info" in prompt.lower() else [])
+    if found_class and target_methods:
+        all_methods_ok = True
+        found_method_names = []
+        missing_method_names = []
+        for m in target_methods:
+            if any(em.lower() == m.lower() for em in found_class["methods"]):
+                found_method_names.append(m)
+            else:
+                missing_method_names.append(m)
+                all_methods_ok = False
 
-    # 4. ตรวจการสร้าง Object อย่างน้อย 2 รายการ
-    if found_class:
-        inst_count = facts["instantiations"].count(found_class["name"])
-        if inst_count >= 2:
+        if all_methods_ok:
             checklist.append({
-                "criterion": f"สร้าง Object อย่างน้อย 2 รายการ ข้อมูลแตกต่างกัน",
+                "criterion": f"สร้าง Method ({', '.join([m + '()' for m in target_methods])}) ตามข้อกำหนด",
                 "passed": True,
-                "evidence": f"พบการสร้างอินสแตนซ์ {found_class['name']}(...) จำนวน {inst_count} รายการ",
-                "feedback": "สร้างอ็อบเจกต์ครบตามเงื่อนไข",
+                "evidence": f"พบ def {', '.join(found_method_names)} ภายในคลาส",
+                "feedback": "สร้าง Method ตามชื่อที่โจทย์กำหนดครบถ้วน",
             })
             score += 2
-        elif inst_count == 1:
+        elif found_method_names:
             checklist.append({
-                "criterion": f"สร้าง Object อย่างน้อย 2 รายการ ข้อมูลแตกต่างกัน",
+                "criterion": f"สร้าง Method ({', '.join([m + '()' for m in target_methods])}) ตามข้อกำหนด",
                 "passed": False,
-                "evidence": f"พบการสร้างอินสแตนซ์ {found_class['name']}(...) เพียง 1 รายการ",
-                "feedback": "โจทย์กำหนดให้สร้างอย่างน้อย 2 รายการ (เช่น product1 และ product2)",
+                "evidence": f"พบเฉพาะ def {', '.join(found_method_names)} (ยังขาด: {', '.join(missing_method_names)})",
+                "feedback": f"ควรสร้างเมธอด {', '.join(missing_method_names)} เพิ่มเติม",
             })
             score += 1
         else:
             checklist.append({
-                "criterion": f"สร้าง Object อย่างน้อย 2 รายการ ข้อมูลแตกต่างกัน",
+                "criterion": f"สร้าง Method ({', '.join([m + '()' for m in target_methods])}) ตามข้อกำหนด",
+                "passed": False,
+                "evidence": f"ไม่พบเมธอดตามที่กำหนด (Method ที่พบ: {found_class['methods']})",
+                "feedback": f"ควรสร้างเมธอด def {target_methods[0]}(self):",
+            })
+    elif found_class and found_class["methods"]:
+        user_methods = [m for m in found_class["methods"] if not (m.startswith("__") and m.endswith("__"))]
+        if user_methods:
+            checklist.append({
+                "criterion": "สร้าง Method ในคลาสสำหรับจัดการข้อมูล",
+                "passed": True,
+                "evidence": f"พบเมธอด {', '.join(user_methods)}",
+                "feedback": "สร้างเมธอดในคลาสเรียบร้อย",
+            })
+            score += 2
+
+    # 4. ตรวจการสร้าง Object
+    min_objs = specs.get("min_objects", 2)
+    if found_class:
+        inst_count = facts["instantiations"].count(found_class["name"])
+        if inst_count >= min_objs:
+            checklist.append({
+                "criterion": f"สร้าง Object อย่างน้อย {min_objs} รายการ",
+                "passed": True,
+                "evidence": f"พบการสร้างอินสแตนซ์ {found_class['name']}(...) จำนวน {inst_count} รายการ",
+                "feedback": f"สร้างอ็อบเจกต์ครบตามเงื่อนไข (>= {min_objs} รายการ)",
+            })
+            score += 2
+        elif inst_count > 0:
+            checklist.append({
+                "criterion": f"สร้าง Object อย่างน้อย {min_objs} รายการ",
+                "passed": False,
+                "evidence": f"พบการสร้างอินสแตนซ์ {found_class['name']}(...) เพียง {inst_count} รายการ",
+                "feedback": f"โจทย์กำหนดให้สร้างอย่างน้อย {min_objs} รายการ",
+            })
+            score += 1
+        else:
+            checklist.append({
+                "criterion": f"สร้าง Object อย่างน้อย {min_objs} รายการ",
                 "passed": False,
                 "evidence": f"ไม่พบคำสั่งสร้าง Object จากคลาส {found_class['name']}",
-                "feedback": f"ควรมีคำสั่งสร้างอ็อบเจกต์ เช่น p1 = {found_class['name']}(...)",
+                "feedback": f"ควรมีคำสั่งสร้างอ็อบเจกต์ เช่น obj1 = {found_class['name']}(...)",
             })
 
     # 5. ตรวจการเรียกใช้ Method เพื่อแสดงผล
-    calls_count = facts["method_calls"].count("show_info")
-    if calls_count >= 1:
+    called_methods = [m for m in (specs.get("methods") or ["show_info"]) if facts["method_calls"].count(m) >= 1]
+    if called_methods:
         checklist.append({
-            "criterion": "เรียกใช้ Method เพื่อแสดงข้อมูลของ Object แต่ละรายการ",
+            "criterion": "เรียกใช้ Method เพื่อแสดงผลการทำงานของ Object",
             "passed": True,
-            "evidence": f"พบคำสั่งเรียกใช้ .show_info() จำนวน {calls_count} ครั้ง",
-            "feedback": "เรียกใช้ Method แสดงผลสำเร็จ",
+            "evidence": f"พบคำสั่งเรียกใช้ .{called_methods[0]}() ในโปรแกรม",
+            "feedback": "เรียกใช้ Method สำเร็จ",
+        })
+        score += 2
+    elif facts["method_calls"]:
+        checklist.append({
+            "criterion": "เรียกใช้ Method ของ Object",
+            "passed": True,
+            "evidence": f"พบการเรียกใช้เมธอด: {', '.join(set(facts['method_calls']))}",
+            "feedback": "มีการเรียกใช้ Method",
         })
         score += 2
     else:
         checklist.append({
-            "criterion": "เรียกใช้ Method เพื่อแสดงข้อมูลของ Object แต่ละรายการ",
+            "criterion": "เรียกใช้ Method เพื่อแสดงผลการทำงานของ Object",
             "passed": False,
-            "evidence": "ไม่พบคำสั่งเรียก .show_info()",
-            "feedback": "ควรเรียกใช้เมธอดเพื่อแสดงข้อมูลของแต่ละอ็อบเจกต์ (เช่น p1.show_info())",
+            "evidence": "ไม่พบคำสั่งเรียกใช้ Method ของอ็อบเจกต์",
+            "feedback": "ควรมีคำสั่งเรียกใช้งานเมธอดเพื่อทดสอบการทำงานของแต่ละอ็อบเจกต์",
         })
+
 
     status = "passed" if score >= 8 else ("partial" if score >= 5 else "failed")
     status_label = "ผ่านเกณฑ์สมบูรณ์" if status == "passed" else ("ผ่านเกณฑ์บางส่วน" if status == "partial" else "ควรปรับปรุง")
@@ -254,7 +332,8 @@ def evaluate_with_ast_fallback(prompt: str, code: str, student_name: str = "", f
     else:
         summary += "ยังมีข้อกำหนดบางส่วนที่ยังไม่ครบถ้วน กรุณาดูรายละเอียดในเช็คลิสต์"
 
-    note = f"สร้างคลาส {target_class} และเมธอด {target_method} เรียบร้อย ({score}/{max_score})"
+    methods_str = ", ".join(target_methods) if target_methods else "เมธอด"
+    note = f"สร้างคลาส {target_class} และเมธอด {methods_str} ({score}/{max_score})"
 
     return {
         "mode": "ast_heuristic",

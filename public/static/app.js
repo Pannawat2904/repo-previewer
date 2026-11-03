@@ -37,6 +37,7 @@ const state = {
   pendingUploadFiles: [],
   activePyFile: null,
   pyOriginalCodeMap: {},
+  courseAssignments: {},
 };
 
 let pyodideReadyPromise = null;
@@ -146,6 +147,17 @@ const elements = {
   btnSaveGeminiKey: document.getElementById('btnSaveGeminiKey'),
   geminiKeyStatusBadge: document.getElementById('geminiKeyStatusBadge'),
   geminiKeyMessage: document.getElementById('geminiKeyMessage'),
+  modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
+  btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
+  assignmentPickerGroup: document.getElementById('assignmentPickerGroup'),
+  assignmentPickerSelect: document.getElementById('assignmentPickerSelect'),
+  btnQuickEditAssignment: document.getElementById('btnQuickEditAssignment'),
+  btnTogglePromptPane: document.getElementById('btnTogglePromptPane'),
+  studioRubricBadge: document.getElementById('studioRubricBadge'),
+  pyStudioSplit: document.getElementById('pyStudioSplit'),
+  pyPromptPane: document.getElementById('pyPromptPane'),
+  pyPromptBody: document.getElementById('pyPromptBody'),
+  btnStudioEditPrompt: document.getElementById('btnStudioEditPrompt'),
   importModeTabs: document.querySelectorAll('.import-mode-tab'),
   importPaneGithub: document.getElementById('importPaneGithub'),
   importPaneUpload: document.getElementById('importPaneUpload'),
@@ -185,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // -------------------------------------------------------------
 function initCoursesState() {
   renderCourseSelect();
+  fetchCourseAssignments(state.activeCourseId);
 }
 
 function getActiveCourse() {
@@ -437,6 +450,7 @@ function switchCourse(courseId) {
   renderCourseSelect();
   renderStudentsList();
   updateViewedStats();
+  fetchCourseAssignments(target.id);
 
   if (state.students.length > 0 && state.currentIndex >= 0 && state.currentIndex < state.students.length) {
     selectStudent(state.currentIndex);
@@ -517,6 +531,28 @@ function setupEventListeners() {
   }
   if (elements.btnGradeStudentInStudio) {
     elements.btnGradeStudentInStudio.addEventListener('click', handleGradeBadgeClick);
+  }
+  if (elements.assignmentPickerSelect) {
+    elements.assignmentPickerSelect.addEventListener('change', (e) => {
+      handleSwitchAssignmentTask(e.target.value);
+    });
+  }
+  if (elements.btnQuickEditAssignment) {
+    elements.btnQuickEditAssignment.addEventListener('click', openAssignmentModal);
+  }
+  if (elements.btnStudioEditPrompt) {
+    elements.btnStudioEditPrompt.addEventListener('click', openAssignmentModal);
+  }
+  if (elements.btnTogglePromptPane) {
+    elements.btnTogglePromptPane.addEventListener('click', toggleStudioPromptPane);
+  }
+  if (elements.modalAssignmentTaskSelect) {
+    elements.modalAssignmentTaskSelect.addEventListener('change', (e) => {
+      handleModalTaskSelectChange(e.target.value);
+    });
+  }
+  if (elements.btnAddNewAssignment) {
+    elements.btnAddNewAssignment.addEventListener('click', handleAddNewAssignmentTask);
   }
 
   // Import Mode Tabs (GitHub Links vs Upload Files)
@@ -726,29 +762,203 @@ const DEFAULT_PRODUCT_PROMPT = `คำชี้แจง ให้นักเ�
 
 ** นักเรียนสามารถเลือกชื่อสินค้าและกำหนดราคาเองได้ โดยต้องสร้าง Object อย่างน้อย 2 รายการ และคำนวณผลลัพธ์ได้ถูกต้อง`;
 
+async function fetchCourseAssignments(courseId) {
+  if (!courseId) return;
+  try {
+    const res = await fetch(`/api/assignment/${encodeURIComponent(courseId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      state.courseAssignments = state.courseAssignments || {};
+      state.courseAssignments[courseId] = data;
+      const course = state.courses.find(c => c.id === courseId);
+      if (course && data.title) {
+        course.assignment = data.title;
+        renderCourseSelect();
+      }
+      renderAssignmentPickers();
+      renderStudioPromptPane(getCurrentStudent());
+    }
+  } catch (e) {
+    console.warn('Could not fetch course assignments:', e);
+  }
+}
+
+function getActiveAssignmentData() {
+  const course = getActiveCourse();
+  if (!course) return null;
+  const courseData = (state.courseAssignments && state.courseAssignments[course.id]) || null;
+  const taskList = (courseData && courseData.assignments) || [];
+  const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || 'work-4';
+  const activeTask = taskList.find(t => t.id === activeId) || courseData;
+
+  if (activeTask && activeTask.prompt) {
+    return activeTask;
+  }
+
+  // Fallback defaults for Python OOP
+  if (course.id.includes('python') || course.id.includes('oop')) {
+    return {
+      id: 'work-4',
+      title: 'งานที่ 4 โปรแกรมจัดการข้อมูลสินค้า (Product Class)',
+      prompt: DEFAULT_PRODUCT_PROMPT,
+      max_score: 10,
+    };
+  }
+
+  return {
+    id: 'work-1',
+    title: course.assignment || 'โจทย์ประจำงาน',
+    prompt: '',
+    max_score: 10,
+  };
+}
+
+function renderAssignmentPickers() {
+  const course = getActiveCourse();
+  if (!course) return;
+  const courseData = (state.courseAssignments && state.courseAssignments[course.id]) || null;
+  const taskList = (courseData && courseData.assignments) || [];
+  const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || 'work-4';
+
+  const isPythonOrHasTasks = taskList.length > 0 || course.id.includes('python') || course.id.includes('oop');
+
+  if (elements.assignmentPickerGroup) {
+    elements.assignmentPickerGroup.style.display = isPythonOrHasTasks ? 'inline-flex' : 'none';
+  }
+
+  if (elements.assignmentPickerSelect) {
+    elements.assignmentPickerSelect.innerHTML = '';
+    taskList.forEach(task => {
+      const opt = document.createElement('option');
+      opt.value = task.id;
+      opt.textContent = task.title;
+      if (task.id === activeId) opt.selected = true;
+      elements.assignmentPickerSelect.appendChild(opt);
+    });
+  }
+
+  if (elements.modalAssignmentTaskSelect) {
+    elements.modalAssignmentTaskSelect.innerHTML = '';
+    taskList.forEach(task => {
+      const opt = document.createElement('option');
+      opt.value = task.id;
+      opt.textContent = task.title;
+      if (task.id === activeId) opt.selected = true;
+      elements.modalAssignmentTaskSelect.appendChild(opt);
+    });
+  }
+}
+
+async function handleSwitchAssignmentTask(taskId) {
+  const course = getActiveCourse();
+  if (!course) return;
+  const courseData = state.courseAssignments && state.courseAssignments[course.id];
+  if (!courseData) return;
+  const targetTask = (courseData.assignments || []).find(t => t.id === taskId);
+  if (!targetTask) return;
+
+  courseData.active_assignment_id = taskId;
+  courseData.id = taskId;
+  courseData.title = targetTask.title;
+  courseData.prompt = targetTask.prompt;
+  courseData.max_score = targetTask.max_score || 10;
+  course.assignment = targetTask.title;
+
+  // Reset student assignment evaluation if for a previous task
+  state.students.forEach(s => {
+    if (s.assignment_evaluation && s.assignment_evaluation.assignment_id !== taskId) {
+      delete s.assignment_evaluation;
+    }
+  });
+
+  renderCourseSelect();
+  renderAssignmentPickers();
+  updateAssignmentGradeBadge(getCurrentStudent());
+  renderStudioPromptPane(getCurrentStudent());
+
+  showToast(`สลับโจทย์เป็น: ${targetTask.title}`, 'info');
+
+  try {
+    await fetch(`/api/assignment/${encodeURIComponent(course.id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: taskId,
+        title: targetTask.title,
+        prompt: targetTask.prompt,
+        max_score: targetTask.max_score || 10,
+      }),
+    });
+  } catch (e) {
+    console.warn('Could not sync active task to server:', e);
+  }
+}
+
 async function openAssignmentModal() {
   const course = getActiveCourse();
   if (elements.modalAssignmentCourseLabel && course) {
-    elements.modalAssignmentCourseLabel.textContent = `วิชา: ${course.subject} (${course.assignment})`;
+    elements.modalAssignmentCourseLabel.textContent = `วิชา: ${course.subject}`;
   }
   if (elements.assignmentModal) {
     elements.assignmentModal.style.display = 'flex';
   }
 
-  // โหลดข้อมูลโจทย์จากเซิร์ฟเวอร์
-  try {
-    const res = await fetch(`/api/assignment/${encodeURIComponent(course.id)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = data.title || course.assignment || '';
-      if (elements.assignmentPromptTextarea) elements.assignmentPromptTextarea.value = data.prompt || '';
-    }
-  } catch (e) {
-    console.warn('Could not load assignment from server:', e);
+  // โหลดข้อมูลล่าสุด
+  await fetchCourseAssignments(course.id);
+  renderAssignmentPickers();
+
+  const courseData = state.courseAssignments && state.courseAssignments[course.id];
+  const activeId = (courseData && courseData.active_assignment_id) || 'work-4';
+  const task = (courseData && (courseData.assignments || []).find(t => t.id === activeId)) || courseData;
+
+  if (elements.modalAssignmentTaskSelect) {
+    elements.modalAssignmentTaskSelect.value = activeId;
+  }
+  if (elements.assignmentTitleInput && task) {
+    elements.assignmentTitleInput.value = task.title || course.assignment || '';
+  }
+  if (elements.assignmentPromptTextarea && task) {
+    elements.assignmentPromptTextarea.value = task.prompt || '';
   }
 
   // ตรวจสอบสถานะ API Key
   checkGeminiKeyStatus();
+}
+
+function handleModalTaskSelectChange(taskId) {
+  const course = getActiveCourse();
+  if (!course) return;
+  const courseData = state.courseAssignments && state.courseAssignments[course.id];
+  if (!courseData) return;
+  const targetTask = (courseData.assignments || []).find(t => t.id === taskId);
+  if (targetTask) {
+    if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = targetTask.title || '';
+    if (elements.assignmentPromptTextarea) elements.assignmentPromptTextarea.value = targetTask.prompt || '';
+  }
+}
+
+function handleAddNewAssignmentTask() {
+  const course = getActiveCourse();
+  if (!course) return;
+  const courseData = state.courseAssignments && state.courseAssignments[course.id];
+  const count = (courseData && courseData.assignments ? courseData.assignments.length : 0) + 1;
+  const newId = `work-${count}`;
+  const defaultTitle = `งานที่ ${count} โจทย์ใหม่`;
+
+  if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = defaultTitle;
+  if (elements.assignmentPromptTextarea) {
+    elements.assignmentPromptTextarea.value = `คำชี้แจง ให้นักเรียนพัฒนาโปรแกรมภาษา Python ตามข้อกำหนดต่อไปนี้:\n\nข้อกำหนดของโปรแกรม\n• สร้างคลาสชื่อ ...\n• กำหนด Property ได้แก่ ...\n• สร้าง Method ชื่อ ...\n• สร้าง Object อย่างน้อย 2 รายการ\n• แสดงผลการทำงานให้ถูกต้อง`;
+  }
+
+  if (elements.modalAssignmentTaskSelect) {
+    const opt = document.createElement('option');
+    opt.value = newId;
+    opt.textContent = `+ ${defaultTitle}`;
+    opt.selected = true;
+    elements.modalAssignmentTaskSelect.appendChild(opt);
+  }
+
+  showToast(`กรอกข้อความโจทย์สำหรับ ${defaultTitle} แล้วกดบันทึก`, 'info');
 }
 
 function closeAssignmentModal() {
@@ -794,7 +1004,7 @@ async function handleSaveGeminiKey() {
   }
   if (elements.geminiKeyMessage) {
     elements.geminiKeyMessage.className = 'key-status-msg';
-    elements.geminiKeyMessage.textContent = 'กำลังทดสอบการเชื่อมต่อ API...';
+    elements.geminiKeyMessage.textContent = 'กำลังบันทึกและตรวจสอบ API Key...';
   }
   try {
     const res = await fetch('/api/settings/gemini-key', {
@@ -826,6 +1036,7 @@ async function handleSaveGeminiKey() {
 
 async function handleSaveAssignment() {
   const course = getActiveCourse();
+  const selectedTaskId = elements.modalAssignmentTaskSelect ? elements.modalAssignmentTaskSelect.value : null;
   const title = elements.assignmentTitleInput ? elements.assignmentTitleInput.value.trim() : '';
   const prompt = elements.assignmentPromptTextarea ? elements.assignmentPromptTextarea.value.trim() : '';
 
@@ -833,13 +1044,23 @@ async function handleSaveAssignment() {
     const res = await fetch(`/api/assignment/${encodeURIComponent(course.id)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, prompt, max_score: 10 }),
+      body: JSON.stringify({
+        id: selectedTaskId || undefined,
+        title: title || 'โจทย์ประจำงาน',
+        prompt: prompt,
+        max_score: 10,
+      }),
     });
     if (res.ok) {
-      course.assignment = title || course.assignment;
+      const updated = await res.json();
+      state.courseAssignments = state.courseAssignments || {};
+      state.courseAssignments[course.id] = updated;
+      course.assignment = updated.title || title;
       renderCourseSelect();
+      renderAssignmentPickers();
+      renderStudioPromptPane(getCurrentStudent());
       closeAssignmentModal();
-      showToast('บันทึกโจทย์และเกณฑ์ตรวจประจำงานเรียบร้อยแล้ว', 'success');
+      showToast('✓ บันทึกโจทย์และเกณฑ์ตรวจประจำงานเรียบร้อยแล้ว', 'success');
     } else {
       showToast('ไม่สามารถบันทึกโจทย์ได้', 'error');
     }
@@ -848,11 +1069,215 @@ async function handleSaveAssignment() {
   }
 }
 
+// -------------------------------------------------------------
+// Side-by-Side Studio Prompt & Live Comparison Pane
+// -------------------------------------------------------------
+function toggleStudioPromptPane() {
+  if (!elements.pyStudioSplit) return;
+  const isCurrentlyShown = elements.pyStudioSplit.classList.contains('has-prompt');
+  if (isCurrentlyShown) {
+    elements.pyStudioSplit.classList.remove('has-prompt');
+    if (elements.pyPromptPane) elements.pyPromptPane.style.display = 'none';
+    if (elements.btnTogglePromptPane) elements.btnTogglePromptPane.classList.remove('active');
+  } else {
+    elements.pyStudioSplit.classList.add('has-prompt');
+    if (elements.pyPromptPane) elements.pyPromptPane.style.display = 'flex';
+    if (elements.btnTogglePromptPane) elements.btnTogglePromptPane.classList.add('active');
+    renderStudioPromptPane(getCurrentStudent());
+  }
+}
+
+function renderStudioPromptPane(student) {
+  if (!elements.pyPromptBody) return;
+  if (!student) student = getCurrentStudent();
+
+  const asg = getActiveAssignmentData();
+  if (!asg) {
+    elements.pyPromptBody.innerHTML = '<div style="color:var(--text-secondary); padding:16px;">ไม่พบข้อมูลโจทย์</div>';
+    return;
+  }
+
+  const promptText = asg.prompt || '';
+  const titleText = asg.title || 'โจทย์ประจำงาน';
+
+  // Quick client-side requirement extraction
+  const mCls = promptText.match(/(?:สร้างคลาสชื่อ|class|คลาสชื่อ|คลาส)\s*[`'"]?([A-Za-z_]\w*)[`'"]?/i);
+  const targetClass = mCls ? mCls[1] : null;
+
+  const mAttr = promptText.match(/(?:Property\s*ได้แก่|attribute\s*[:ได้แก่]*|แอตทริบิวต์\s*[:ได้แก่]*|คุณสมบัติ\s*[:ได้แก่]*)\s*([^\n\r]+)/i);
+  let attrs = [];
+  if (mAttr) {
+    attrs = mAttr[1].replace(/[\(\)\[\]`'"และ,]/g, ' ').split(/\s+/).filter(w => /^[a-zA-Z_]\w*$/.test(w));
+  }
+
+  const mMethods = Array.from(promptText.matchAll(/(?:Method\s*(?:ชื่อ)?|เมธอด\s*(?:ชื่อ)?|ฟังก์ชันในคลาส\s*)\s*[`'"]?([A-Za-z_]\w*)\s*(?:\(\))?[`'"]?/gi)).map(m => m[1]);
+  const methods = Array.from(new Set(mMethods));
+
+  const mObjs = promptText.match(/(?:สร้าง\s*Object|สร้าง\s*วัตถุ|สร้าง\s*อ็อบเจกต์).*?(\d+)/i);
+  const minObjs = mObjs ? mObjs[1] : 2;
+
+  let tagsHtml = '';
+  if (targetClass) tagsHtml += `<span class="spec-tag" title="คลาสที่ต้องสร้าง">📦 Class: ${escapeHtml(targetClass)}</span>`;
+  if (attrs.length > 0) tagsHtml += `<span class="spec-tag" title="Property/แอตทริบิวต์ที่ต้องมี">🏷️ Props: ${escapeHtml(attrs.join(', '))}</span>`;
+  if (methods.length > 0) tagsHtml += `<span class="spec-tag" title="Method ที่ต้องมี">⚙️ Method: ${escapeHtml(methods.map(m => m + '()').join(', '))}</span>`;
+  if (minObjs) tagsHtml += `<span class="spec-tag" title="จำนวน Object ขั้นต่ำ">🔢 Min Obj: ${escapeHtml(minObjs)}</span>`;
+
+  // Evaluation status
+  const ev = student ? student.assignment_evaluation : null;
+
+  // Update studio rubric badge in toolbar
+  if (elements.studioRubricBadge) {
+    if (ev) {
+      elements.studioRubricBadge.style.display = 'inline-flex';
+      elements.studioRubricBadge.textContent = `${ev.score}/${ev.max_score} (${ev.status_label})`;
+      elements.studioRubricBadge.className = `rubric-mini-pill ${ev.status || 'passed'}`;
+    } else {
+      elements.studioRubricBadge.style.display = 'inline-flex';
+      elements.studioRubricBadge.textContent = 'รอตรวจ';
+      elements.studioRubricBadge.className = 'rubric-mini-pill';
+    }
+  }
+
+  let evalStatusHtml = '';
+  let checklistHtml = '';
+
+  if (ev) {
+    const isPassed = ev.status === 'passed';
+    const isPartial = ev.status === 'partial';
+    const scoreClass = isPassed ? 'passed' : (isPartial ? 'partial' : 'failed');
+    const badgeMode = ev.mode === 'gemini_ai' ? '🤖 ตรวจด้วย Gemini AI' : '⚡ ตรวจด้วย AST Heuristic (ออฟไลน์)';
+
+    evalStatusHtml = `
+      <div class="prompt-score-bar">
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">ผลการตรวจงาน</div>
+          <div style="font-size:0.8rem; font-weight:600; color:var(--text-primary); margin-top:2px;">${escapeHtml(ev.status_label)}</div>
+          <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${badgeMode}</div>
+        </div>
+        <div class="prompt-score-val ${scoreClass}">${ev.score}<span style="font-size:0.85rem; font-weight:600; opacity:0.7;"> / ${ev.max_score}</span></div>
+      </div>
+      <div class="prompt-actions-row">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnStudioApplyNote" title="นำข้อสรุปและคะแนนลงบันทึกในช่องตรวจ">
+          📝 บันทึกคะแนน
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnStudioReGrade" title="ตรวจโค้ดตามโจทย์อีกครั้ง">
+          ⚡ ตรวจซ้ำ
+        </button>
+      </div>
+    `;
+
+    const items = ev.checklist || [];
+    checklistHtml = `
+      <div class="rubric-mini-list">
+        ${items.map(item => `
+          <div class="rubric-mini-item ${item.passed ? 'passed' : 'failed'}">
+            <span class="rubric-mini-icon">${item.passed ? '✅' : '❌'}</span>
+            <div class="rubric-mini-text">
+              <div class="rubric-mini-title">${escapeHtml(item.criterion)}</div>
+              ${item.evidence ? `<div class="rubric-mini-evidence">${escapeHtml(item.evidence)}</div>` : ''}
+              ${item.feedback ? `<div class="rubric-mini-feedback">${escapeHtml(item.feedback)}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } else {
+    evalStatusHtml = `
+      <div style="padding:10px 12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px; text-align:center;">
+        <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:8px;">ยังไม่ได้ตรวจโค้ดของนักเรียนคนนี้</div>
+        <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center;">
+          ⚡ ตรวจโค้ดตามโจทย์ทันที
+        </button>
+      </div>
+    `;
+
+    // Preview what will be checked
+    checklistHtml = `
+      <div class="rubric-mini-list">
+        <div class="rubric-mini-item">
+          <span class="rubric-mini-icon">🔍</span>
+          <div class="rubric-mini-text">
+            <div class="rubric-mini-title">ตรวจคลาสและ Constructor</div>
+            <div class="rubric-mini-feedback">${targetClass ? `ต้องมี class ${escapeHtml(targetClass)} และ __init__` : 'สร้างคลาสตามโจทย์'}</div>
+          </div>
+        </div>
+        <div class="rubric-mini-item">
+          <span class="rubric-mini-icon">🔍</span>
+          <div class="rubric-mini-text">
+            <div class="rubric-mini-title">ตรวจ Property / Attributes</div>
+            <div class="rubric-mini-feedback">${attrs.length > 0 ? `ต้องกำหนด self.${attrs.join(', self.')}` : 'กำหนด Property ตามโจทย์'}</div>
+          </div>
+        </div>
+        <div class="rubric-mini-item">
+          <span class="rubric-mini-icon">🔍</span>
+          <div class="rubric-mini-text">
+            <div class="rubric-mini-title">ตรวจ Method ในคลาส</div>
+            <div class="rubric-mini-feedback">${methods.length > 0 ? `ต้องมี def ${methods.join('(), def ')}()` : 'สร้าง Method ตามโจทย์'}</div>
+          </div>
+        </div>
+        <div class="rubric-mini-item">
+          <span class="rubric-mini-icon">🔍</span>
+          <div class="rubric-mini-text">
+            <div class="rubric-mini-title">ตรวจการสร้าง Object</div>
+            <div class="rubric-mini-feedback">สร้าง Object อย่างน้อย ${minObjs} รายการและเรียกใช้งาน Method</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  elements.pyPromptBody.innerHTML = `
+    <div class="prompt-mini-header">
+      <div class="prompt-mini-title">
+        <span>📋 ${escapeHtml(titleText)}</span>
+        <button type="button" class="btn-text-sm" id="btnMiniEditPrompt" title="แก้ไขโจทย์นี้" style="font-size:0.75rem; color:#93c5fd; background:none; border:none; cursor:pointer;">✏️ แก้โจทย์</button>
+      </div>
+      <div class="prompt-mini-desc">${escapeHtml(promptText || 'ยังไม่ได้ระบุรายละเอียดโจทย์')}</div>
+      ${tagsHtml ? `<div class="prompt-specs-tags">${tagsHtml}</div>` : ''}
+    </div>
+
+    ${evalStatusHtml}
+
+    <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
+      เกณฑ์ตรวจเทียบกับโค้ด
+    </div>
+    ${checklistHtml}
+  `;
+
+  // Attach internal buttons
+  const btnMiniEdit = elements.pyPromptBody.querySelector('#btnMiniEditPrompt');
+  if (btnMiniEdit) btnMiniEdit.addEventListener('click', openAssignmentModal);
+
+  const btnGradeNow = elements.pyPromptBody.querySelector('#btnStudioGradeNow');
+  if (btnGradeNow) {
+    btnGradeNow.addEventListener('click', () => {
+      gradeCurrentStudentAgainstAssignment(student);
+    });
+  }
+
+  const btnReGrade = elements.pyPromptBody.querySelector('#btnStudioReGrade');
+  if (btnReGrade) {
+    btnReGrade.addEventListener('click', () => {
+      gradeCurrentStudentAgainstAssignment(student);
+    });
+  }
+
+  const btnApplyNote = elements.pyPromptBody.querySelector('#btnStudioApplyNote');
+  if (btnApplyNote) {
+    btnApplyNote.addEventListener('click', () => {
+      applyEvaluationNote(student);
+    });
+  }
+}
+
 async function gradeCurrentStudentAgainstAssignment(student) {
   if (!student) student = getCurrentStudent();
   if (!student) return;
 
   const course = getActiveCourse();
+  const asg = getActiveAssignmentData();
+  const activeId = asg ? asg.id : 'work-4';
+  const promptToUse = asg ? asg.prompt : DEFAULT_PRODUCT_PROMPT;
 
   // กำหนดสถานะปุ่ม
   if (elements.assignmentGradeBadge) {
@@ -864,7 +1289,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
     elements.btnGradeStudentInStudio.textContent = '⏳ กำลังตรวจ...';
   }
 
-  showToast(`กำลังวิเคราะห์โค้ดของ ${student.student_name || student.repo} ตามโจทย์...`, 'info');
+  showToast(`กำลังวิเคราะห์โค้ดของ ${student.student_name || student.repo} ตามโจทย์ (${asg ? asg.title : 'งาน'})...`, 'info');
 
   try {
     let codeToGrade = '';
@@ -879,10 +1304,12 @@ async function gradeCurrentStudentAgainstAssignment(student) {
 
     const payload = {
       course_id: course.id,
+      assignment_id: activeId,
       owner: student.owner,
       repo: student.repo,
       code: codeToGrade || undefined,
       filename: filename,
+      prompt: promptToUse,
       student_name: student.student_name || `${student.owner}/${student.repo}`,
     };
 
@@ -894,8 +1321,10 @@ async function gradeCurrentStudentAgainstAssignment(student) {
 
     if (res.ok) {
       const evalResult = await res.json();
+      evalResult.assignment_id = activeId;
       student.assignment_evaluation = evalResult;
       updateAssignmentGradeBadge(student);
+      renderStudioPromptPane(student);
       showToast(`ตรวจเสร็จสิ้น! ได้คะแนน ${evalResult.score}/${evalResult.max_score} (${evalResult.status_label})`, 'success');
 
       if (state.activeTab === 'inspect') {
@@ -913,7 +1342,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
   } finally {
     if (elements.btnGradeStudentInStudio) {
       elements.btnGradeStudentInStudio.disabled = false;
-      elements.btnGradeStudentInStudio.textContent = '🎯 ตรวจตามโจทย์';
+      elements.btnGradeStudentInStudio.textContent = '⚡ ตรวจตามโจทย์';
     }
   }
 }
@@ -2030,6 +2459,8 @@ async function selectStudent(index) {
 
   // Badges
   updateAssignmentGradeBadge(student);
+  renderAssignmentPickers();
+  renderStudioPromptPane(student);
   const commit = student.meta && student.meta.commit_hash ? student.meta.commit_hash.substring(0, 7) : '-';
   if (elements.commitBadge) {
     elements.commitBadge.style.display = isUploaded ? 'none' : 'inline-flex';
@@ -2183,6 +2614,7 @@ function setupPythonStudioForStudent(student, pythonInfo) {
     if (elements.pyEntryFileSelect) elements.pyEntryFileSelect.value = defaultEntry;
     selectPythonStudioFile(student, defaultEntry, true);
   }
+  renderStudioPromptPane(student);
 }
 
 function selectPythonStudioFile(student, filePath, isAutoInit = false) {

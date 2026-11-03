@@ -194,6 +194,7 @@ class UploadBatchRequest(BaseModel):
 
 
 class AssignmentSaveRequest(BaseModel):
+    id: Optional[str] = None
     title: Optional[str] = "โจทย์ประจำงาน"
     prompt: str
     max_score: Optional[int] = 10
@@ -201,6 +202,7 @@ class AssignmentSaveRequest(BaseModel):
 
 class AssignmentGradeRequest(BaseModel):
     course_id: Optional[str] = "course-python-oop-1"
+    assignment_id: Optional[str] = None
     owner: Optional[str] = None
     repo: Optional[str] = None
     code: Optional[str] = None
@@ -395,7 +397,12 @@ async def api_grade_assignment(req: AssignmentGradeRequest):
     prompt = req.prompt
     if not prompt or not prompt.strip():
         asg = get_assignment(req.course_id or "course-python-oop-1")
-        prompt = asg.get("prompt", "")
+        if req.assignment_id and asg.get("assignments"):
+            matched = next((t for t in asg["assignments"] if t.get("id") == req.assignment_id), None)
+            if matched and matched.get("prompt"):
+                prompt = matched.get("prompt", "")
+        if not prompt or not prompt.strip():
+            prompt = asg.get("prompt", "")
 
     code = req.code
     resolved_filename = req.filename or "work4_product_class.py"
@@ -438,6 +445,7 @@ async def api_save_assignment(course_id: str, req: AssignmentSaveRequest):
     """บันทึกโจทย์และเกณฑ์ตรวจประจำวิชา"""
     data = {
         "course_id": course_id,
+        "id": req.id,
         "title": req.title or "โจทย์ประจำงาน",
         "prompt": req.prompt,
         "max_score": req.max_score or 10,

@@ -253,6 +253,12 @@
 
               <div class="grading-meta-badges">
                 <span id="hasWebBadge" class="badge badge-success">เว็บสถิต (HTML)</span>
+                <!-- Assignment Picker & Quick Edit -->
+                <div class="assignment-picker-group" id="assignmentPickerGroup" title="เลือกงานหรือคลิกเพื่อแก้ไขโจทย์ก่อนตรวจ">
+                  <span class="picker-icon">📋</span>
+                  <select id="assignmentPickerSelect" class="assignment-picker-select" title="เลือกงานที่ต้องการตรวจ"></select>
+                  <button type="button" id="btnQuickEditAssignment" class="btn-picker-edit" title="แก้ไขโจทย์งานนี้ก่อนตรวจ">✏️ แก้โจทย์</button>
+                </div>
                 <button type="button" id="assignmentGradeBadge" class="badge badge-subtle" title="คลิกเพื่อตรวจงานนักเรียนคนนี้ตามโจทย์">🎯 ตรวจตามโจทย์: รอตรวจ</button>
                 <button type="button" id="aiRiskBadge" class="badge badge-ai-low" title="คลิกเพื่อดูรายละเอียดการวิเคราะห์โอกาสใช้ AI เขียนโค้ด">🤖 AI: รอผล...</button>
                 <span id="commitBadge" class="badge badge-subtle">Commit: -</span>
@@ -308,6 +314,11 @@
             <div id="pythonPreviewStudio" class="py-studio" style="display: none;">
               <div class="py-studio-toolbar">
                 <div class="py-toolbar-left">
+                  <button type="button" id="btnTogglePromptPane" class="btn btn-secondary btn-sm active" title="ซ่อน/แสดง แถบโจทย์และเกณฑ์ตรวจข้างโค้ด">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    <span>เทียบกับโจทย์</span>
+                    <span id="studioRubricBadge" class="rubric-mini-pill" style="display: none;">รอตรวจ</span>
+                  </button>
                   <select id="pyEntryFileSelect" class="py-file-select" title="เลือกไฟล์ Python ที่ต้องการรัน"></select>
                   <button id="btnRunPython" class="btn btn-primary btn-sm" title="รันโค้ด Python และดูผลลัพธ์ (คีย์ลัด Ctrl+Enter)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -316,7 +327,7 @@
                     <span>รันโค้ด</span>
                   </button>
                   <button type="button" id="btnGradeStudentInStudio" class="btn btn-secondary btn-sm" title="ตรวจโค้ดตามโจทย์และเกณฑ์การให้คะแนน">
-                    <span>🎯 ตรวจตามโจทย์</span>
+                    <span>⚡ ตรวจตามโจทย์</span>
                   </button>
                   <button id="btnResetPythonCode" class="btn btn-secondary btn-sm" title="คืนค่าโค้ดต้นฉบับของนักเรียน" style="display: none;">↺ คืนค่าโค้ดเดิม</button>
                   <div id="pyOopChipsBar" class="py-oop-chips-bar"></div>
@@ -330,8 +341,20 @@
                 </div>
               </div>
 
-              <!-- Split Workspace: Left = Code Editor, Right = Output Console -->
-              <div class="py-studio-split">
+              <!-- Split Workspace: Left = Prompt Comparison, Middle = Code Editor, Right = Output Console -->
+              <div class="py-studio-split has-prompt" id="pyStudioSplit">
+                <!-- Column 1: Assignment Prompt & Live Comparison Checklist -->
+                <div class="py-prompt-pane" id="pyPromptPane">
+                  <div class="py-pane-header">
+                    <span class="py-pane-title">🎯 โจทย์ & เกณฑ์ตรวจ</span>
+                    <button type="button" id="btnStudioEditPrompt" class="btn-text-sm" title="แก้ไขข้อความโจทย์ก่อนตรวจ">✏️ แก้โจทย์</button>
+                  </div>
+                  <div class="py-prompt-body" id="pyPromptBody">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+
+                <!-- Column 2: Code Editor -->
                 <div class="py-editor-pane">
                   <div class="py-pane-header">
                     <span class="py-pane-title">📝 โค้ด Python ของนักเรียน</span>
@@ -513,6 +536,16 @@ https://github.com/patvikan24-oss/my-profil-013
         <button id="btnCloseAssignmentModal" class="btn-close">&times;</button>
       </div>
       <div class="modal-body">
+        <div class="form-group mb-3">
+          <label class="form-label" for="modalAssignmentTaskSelect">
+            <strong>เลือกชิ้นงานที่ต้องการตั้งค่า / ตรวจ:</strong>
+          </label>
+          <div style="display:flex; gap:10px;">
+            <select id="modalAssignmentTaskSelect" class="form-input" style="flex:1; font-weight:600;"></select>
+            <button type="button" id="btnAddNewAssignment" class="btn btn-secondary btn-sm" title="สร้างงานใหม่สำหรับการบ้านอื่น">+ เพิ่มงานใหม่</button>
+          </div>
+        </div>
+
         <div class="form-group mb-3">
           <label class="form-label" for="assignmentTitleInput">
             <strong>ชื่องาน / หัวข้อการบ้าน:</strong>
