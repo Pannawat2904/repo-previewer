@@ -1143,11 +1143,13 @@ function renderStudioPromptPane(student) {
   if (elements.studioRubricBadge) {
     if (ev) {
       elements.studioRubricBadge.style.display = 'inline-flex';
-      elements.studioRubricBadge.textContent = `${ev.score}/${ev.max_score} (${ev.status_label})`;
+      elements.studioRubricBadge.textContent = `${ev.score}/${ev.max_score}`;
+      elements.studioRubricBadge.title = `ผลตรวจ: ${ev.score}/${ev.max_score} (${ev.status_label})`;
       elements.studioRubricBadge.className = `rubric-mini-pill ${ev.status || 'passed'}`;
     } else {
       elements.studioRubricBadge.style.display = 'inline-flex';
       elements.studioRubricBadge.textContent = 'รอตรวจ';
+      elements.studioRubricBadge.title = 'ยังไม่ได้ตรวจเทียบกับโจทย์';
       elements.studioRubricBadge.className = 'rubric-mini-pill';
     }
   }
@@ -1307,7 +1309,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
   // กำหนดสถานะปุ่ม
   if (elements.assignmentGradeBadge) {
     elements.assignmentGradeBadge.className = 'badge badge-subtle';
-    elements.assignmentGradeBadge.textContent = '🎯 กำลังตรวจตามโจทย์...';
+    elements.assignmentGradeBadge.textContent = '⏳ กำลังตรวจ...';
   }
   if (elements.btnGradeStudentInStudio) {
     elements.btnGradeStudentInStudio.disabled = true;
@@ -1384,11 +1386,11 @@ function updateAssignmentGradeBadge(student) {
     const isPassed = ev.status === 'passed';
     const isPartial = ev.status === 'partial';
     elements.assignmentGradeBadge.className = `badge ${isPassed ? 'badge-success' : (isPartial ? 'badge-warning' : 'badge-danger')}`;
-    elements.assignmentGradeBadge.textContent = `🎯 ${ev.score}/${ev.max_score} (${ev.status_label})`;
-    elements.assignmentGradeBadge.title = `คลิกเพื่อดูรายละเอียดผลตรวจตามโจทย์: ${ev.summary}`;
+    elements.assignmentGradeBadge.textContent = `🎯 ${ev.score}/${ev.max_score}`;
+    elements.assignmentGradeBadge.title = `ผลตรวจตามโจทย์: ${ev.score}/${ev.max_score} (${ev.status_label}) - คลิกเพื่อดูรายละเอียด: ${ev.summary}`;
   } else {
     elements.assignmentGradeBadge.className = 'badge badge-subtle';
-    elements.assignmentGradeBadge.textContent = '🎯 ตรวจตามโจทย์: รอตรวจ';
+    elements.assignmentGradeBadge.textContent = '🎯 ตรวจโจทย์';
     elements.assignmentGradeBadge.title = 'คลิกเพื่อตรวจงานนักเรียนคนนี้ตามโจทย์ด้วย AI';
   }
 }
@@ -2599,7 +2601,8 @@ async function loadPreviewForStudent(student) {
       student.has_web = true;
       student.preview_url = data.url;
       elements.hasWebBadge.className = 'badge badge-success';
-      elements.hasWebBadge.innerText = data.is_subfolder ? `เว็บสถิต (${data.index_rel})` : 'เว็บสถิต (HTML)';
+      elements.hasWebBadge.innerText = '🌐 Web';
+      elements.hasWebBadge.title = data.is_subfolder ? `เว็บสถิต (${data.index_rel})` : 'เว็บสถิต (HTML)';
       elements.noWebNotice.style.display = 'none';
       if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
       if (elements.previewToolbar) elements.previewToolbar.style.display = 'flex';
@@ -2620,11 +2623,8 @@ async function loadPreviewForStudent(student) {
 
       const oopSum = student.python_info.oop_summary || {};
       elements.hasWebBadge.className = 'badge badge-python';
-      if (oopSum.total_classes > 0) {
-        elements.hasWebBadge.innerText = `🐍 Python OOP (${oopSum.total_classes} คลาส)`;
-      } else {
-        elements.hasWebBadge.innerText = `🐍 Python (${student.python_info.total_python_files || 1} ไฟล์)`;
-      }
+      elements.hasWebBadge.innerText = '🐍 Python';
+      elements.hasWebBadge.title = oopSum.total_classes > 0 ? `Python OOP (${oopSum.total_classes} คลาส)` : `Python (${student.python_info.total_python_files || 1} ไฟล์)`;
 
       if (elements.pythonPreviewStudio) {
         elements.pythonPreviewStudio.style.display = 'flex';
@@ -3281,20 +3281,24 @@ function updateAiRiskBadge(student) {
   const ai = student && (student.ai_analysis || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.ai_analysis));
   if (!ai || typeof ai.ai_score !== 'number') {
     badge.className = 'badge badge-subtle';
-    badge.innerText = '🤖 AI: รอผล...';
+    badge.innerText = '🤖 AI';
+    badge.title = 'รอผลวิเคราะห์โอกาสใช้ AI เขียนโค้ด';
     return;
   }
 
   const score = ai.ai_score;
   if (score >= 65) {
     badge.className = 'badge badge-ai-high';
-    badge.innerText = `🤖 AI: ${score}% (สูง)`;
+    badge.innerText = `🤖 ${score}%`;
+    badge.title = `โอกาสใช้ AI: ${score}% (สูง) - คลิกเพื่อดูรายละเอียด`;
   } else if (score >= 35) {
     badge.className = 'badge badge-ai-medium';
-    badge.innerText = `🤖 AI: ${score}% (ปานกลาง)`;
+    badge.innerText = `🤖 ${score}%`;
+    badge.title = `โอกาสใช้ AI: ${score}% (ปานกลาง) - คลิกเพื่อดูรายละเอียด`;
   } else {
     badge.className = 'badge badge-ai-low';
-    badge.innerText = `🤖 AI: ${score}% (ต่ำ)`;
+    badge.innerText = `🤖 ${score}%`;
+    badge.title = `โอกาสใช้ AI: ${score}% (ต่ำ) - คลิกเพื่อดูรายละเอียด`;
   }
 }
 
