@@ -38,6 +38,7 @@ const state = {
   activePyFile: null,
   pyOriginalCodeMap: {},
   courseAssignments: {},
+  promptDescExpanded: false,
 };
 
 let pyodideReadyPromise = null;
@@ -158,6 +159,10 @@ const elements = {
   pyPromptPane: document.getElementById('pyPromptPane'),
   pyPromptBody: document.getElementById('pyPromptBody'),
   btnStudioEditPrompt: document.getElementById('btnStudioEditPrompt'),
+  btnCollapseSidebarDesktop: document.getElementById('btnCollapseSidebarDesktop'),
+  btnToggleSidebarBar: document.getElementById('btnToggleSidebarBar'),
+  sidebarToggleText: document.getElementById('sidebarToggleText'),
+  btnToggleZenMode: document.getElementById('btnToggleZenMode'),
   importModeTabs: document.querySelectorAll('.import-mode-tab'),
   importPaneGithub: document.getElementById('importPaneGithub'),
   importPaneUpload: document.getElementById('importPaneUpload'),
@@ -553,6 +558,15 @@ function setupEventListeners() {
   }
   if (elements.btnAddNewAssignment) {
     elements.btnAddNewAssignment.addEventListener('click', handleAddNewAssignmentTask);
+  }
+  if (elements.btnCollapseSidebarDesktop) {
+    elements.btnCollapseSidebarDesktop.addEventListener('click', toggleDesktopSidebar);
+  }
+  if (elements.btnToggleSidebarBar) {
+    elements.btnToggleSidebarBar.addEventListener('click', toggleDesktopSidebar);
+  }
+  if (elements.btnToggleZenMode) {
+    elements.btnToggleZenMode.addEventListener('click', toggleZenMode);
   }
 
   // Import Mode Tabs (GitHub Links vs Upload Files)
@@ -1148,21 +1162,19 @@ function renderStudioPromptPane(student) {
     const badgeMode = ev.mode === 'gemini_ai' ? '🤖 ตรวจด้วย Gemini AI' : '⚡ ตรวจด้วย AST Heuristic (ออฟไลน์)';
 
     evalStatusHtml = `
-      <div class="prompt-score-bar">
-        <div>
-          <div style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">ผลการตรวจงาน</div>
-          <div style="font-size:0.8rem; font-weight:600; color:var(--text-primary); margin-top:2px;">${escapeHtml(ev.status_label)}</div>
-          <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${badgeMode}</div>
+      <div class="prompt-score-bar-compact">
+        <div class="prompt-score-left">
+          <span class="prompt-score-pill ${scoreClass}">${ev.score}<small style="font-size:0.68rem; opacity:0.8;">/${ev.max_score}</small></span>
+          <span class="prompt-score-status-text" title="${escapeHtml(badgeMode)}">${escapeHtml(ev.status_label)}</span>
         </div>
-        <div class="prompt-score-val ${scoreClass}">${ev.score}<span style="font-size:0.85rem; font-weight:600; opacity:0.7;"> / ${ev.max_score}</span></div>
-      </div>
-      <div class="prompt-actions-row">
-        <button type="button" class="btn btn-secondary btn-sm" id="btnStudioApplyNote" title="นำข้อสรุปและคะแนนลงบันทึกในช่องตรวจ">
-          📝 บันทึกคะแนน
-        </button>
-        <button type="button" class="btn btn-secondary btn-sm" id="btnStudioReGrade" title="ตรวจโค้ดตามโจทย์อีกครั้ง">
-          ⚡ ตรวจซ้ำ
-        </button>
+        <div class="prompt-actions-inline">
+          <button type="button" class="btn btn-secondary btn-xs" id="btnStudioApplyNote" title="นำข้อสรุปและคะแนนลงบันทึกในช่องตรวจ">
+            📝 บันทึก
+          </button>
+          <button type="button" class="btn btn-secondary btn-xs" id="btnStudioReGrade" title="ตรวจโค้ดตามโจทย์อีกครั้ง">
+            ⚡ ตรวจซ้ำ
+          </button>
+        </div>
       </div>
     `;
 
@@ -1183,9 +1195,8 @@ function renderStudioPromptPane(student) {
     `;
   } else {
     evalStatusHtml = `
-      <div style="padding:10px 12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px; text-align:center;">
-        <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:8px;">ยังไม่ได้ตรวจโค้ดของนักเรียนคนนี้</div>
-        <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center;">
+      <div style="padding:4px 6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:6px; text-align:center;">
+        <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center; height:26px; font-size:0.74rem;">
           ⚡ ตรวจโค้ดตามโจทย์ทันที
         </button>
       </div>
@@ -1226,25 +1237,39 @@ function renderStudioPromptPane(student) {
     `;
   }
 
+  const isDescExpanded = !!state.promptDescExpanded;
+  const toggleDescText = isDescExpanded ? '▴ ย่อโจทย์' : '▾ ดูโจทย์';
+
   elements.pyPromptBody.innerHTML = `
     <div class="prompt-mini-header">
       <div class="prompt-mini-title">
-        <span>📋 ${escapeHtml(titleText)}</span>
-        <button type="button" class="btn-text-sm" id="btnMiniEditPrompt" title="แก้ไขโจทย์นี้" style="font-size:0.75rem; color:#93c5fd; background:none; border:none; cursor:pointer;">✏️ แก้โจทย์</button>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📋 ${escapeHtml(titleText)}</span>
+        <div style="display:inline-flex; align-items:center; gap:6px; flex-shrink:0;">
+          <button type="button" class="btn-text-sm" id="btnTogglePromptDesc" title="ย่อ/ขยายคำอธิบายโจทย์" style="font-size:0.7rem; color:#93c5fd; background:none; border:none; cursor:pointer;">${toggleDescText}</button>
+          <button type="button" class="btn-text-sm" id="btnMiniEditPrompt" title="แก้ไขโจทย์นี้" style="font-size:0.7rem; color:#93c5fd; background:none; border:none; cursor:pointer;">✏️ แก้</button>
+        </div>
       </div>
-      <div class="prompt-mini-desc">${escapeHtml(promptText || 'ยังไม่ได้ระบุรายละเอียดโจทย์')}</div>
+      <div class="prompt-mini-desc ${isDescExpanded ? 'expanded' : ''}">${escapeHtml(promptText || 'ยังไม่ได้ระบุรายละเอียดโจทย์')}</div>
       ${tagsHtml ? `<div class="prompt-specs-tags">${tagsHtml}</div>` : ''}
     </div>
 
     ${evalStatusHtml}
 
-    <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
+    <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-top:1px;">
       เกณฑ์ตรวจเทียบกับโค้ด
     </div>
     ${checklistHtml}
   `;
 
   // Attach internal buttons
+  const btnToggleDesc = elements.pyPromptBody.querySelector('#btnTogglePromptDesc');
+  if (btnToggleDesc) {
+    btnToggleDesc.addEventListener('click', () => {
+      state.promptDescExpanded = !state.promptDescExpanded;
+      renderStudioPromptPane(student);
+    });
+  }
+
   const btnMiniEdit = elements.pyPromptBody.querySelector('#btnMiniEditPrompt');
   if (btnMiniEdit) btnMiniEdit.addEventListener('click', openAssignmentModal);
 
@@ -1436,9 +1461,22 @@ function setupKeyboardShortcuts() {
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       handleReloadCurrentRepo();
-    } else if (e.key === 'f' || e.key === 'F') {
+    } else if (e.key === 'f' || e.key === 'F' || e.key === '[' || e.key === ']') {
       e.preventDefault();
-      toggleMobileSidebar();
+      if (window.innerWidth <= 860) {
+        toggleMobileSidebar();
+      } else {
+        toggleDesktopSidebar();
+      }
+    } else if (e.key === 'z' || e.key === 'Z') {
+      e.preventDefault();
+      toggleZenMode();
+    } else if (e.key === 'Escape') {
+      const layout = document.querySelector('.app-layout');
+      if (layout && layout.classList.contains('zen-mode')) {
+        e.preventDefault();
+        toggleZenMode();
+      }
     }
   });
 }
@@ -1502,7 +1540,7 @@ function exportResultsToCsv() {
 }
 
 // -------------------------------------------------------------
-// Sidebar Drawer & Collapse Toggling
+// Sidebar Drawer & Space Optimization Toggles
 // -------------------------------------------------------------
 function toggleMobileSidebar() {
   const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
@@ -1519,13 +1557,43 @@ function toggleMobileSidebar() {
       if (backdrop) backdrop.classList.add('visible');
     }
   } else {
-    // Desktop Fullscreen/Collapse toggle
-    if (sidebar.classList.contains('hub-auto-hidden')) {
-      sidebar.classList.remove('hub-auto-hidden');
-      sidebar.classList.remove('collapsed');
-    } else {
-      sidebar.classList.toggle('collapsed');
-    }
+    toggleDesktopSidebar();
+  }
+}
+
+function toggleDesktopSidebar() {
+  const sidebar = elements.mainSidebar || document.getElementById('mainSidebar');
+  if (!sidebar) return;
+  const isNowCollapsed = !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed', isNowCollapsed);
+  document.body.classList.toggle('sidebar-collapsed', isNowCollapsed);
+
+  if (elements.sidebarToggleText) {
+    elements.sidebarToggleText.textContent = isNowCollapsed ? '▶ แสดงรายชื่อ' : 'รายชื่อ';
+  }
+  if (elements.btnToggleSidebarBar) {
+    elements.btnToggleSidebarBar.title = isNowCollapsed ? 'แสดงแถบรายชื่อนักเรียน (คีย์ลัด [)' : 'ซ่อนแถบรายชื่อเพื่อขยายพื้นที่ตรวจงาน (คีย์ลัด [)';
+    elements.btnToggleSidebarBar.classList.toggle('active', isNowCollapsed);
+  }
+  if (isNowCollapsed) {
+    showToast('ซ่อนแถบรายชื่อแล้ว (กด [ หรือคลิก "แสดงรายชื่อ" เพื่อเปิด)', 'info');
+  }
+}
+
+function toggleZenMode() {
+  const layout = document.querySelector('.app-layout');
+  if (!layout) return;
+  const isZen = !layout.classList.contains('zen-mode');
+  layout.classList.toggle('zen-mode', isZen);
+  if (elements.btnToggleZenMode) {
+    elements.btnToggleZenMode.classList.toggle('active', isZen);
+    elements.btnToggleZenMode.innerHTML = isZen
+      ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg><span>ย่อจอ</span>`
+      : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg><span>เต็มจอ</span>`;
+    elements.btnToggleZenMode.title = isZen ? 'ออกจากโหมดเต็มจอ (Esc)' : 'โหมดโฟกัสเต็มจอ (ซ่อนแถบอื่น ๆ เพื่อดูโค้ดและผลลัพธ์ได้เต็มจอ)';
+  }
+  if (isZen) {
+    showToast('เข้าสู่โหมดเต็มจอ (กด Esc หรือคลิก "ย่อจอ" เพื่อคืนค่า)', 'info');
   }
 }
 
