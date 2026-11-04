@@ -577,6 +577,161 @@ kbd {
   gap: 8px;
 }
 
+/* Sidebar Drag-and-Drop Quick Import Box */
+.sidebar-drop-area {
+  margin: 6px 10px 8px 10px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px dashed rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius-md, 10px);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.sidebar-drop-area:hover {
+  background: rgba(56, 189, 248, 0.09);
+  border-color: rgba(56, 189, 248, 0.7);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.2);
+}
+
+.sidebar-drop-area.dragover,
+.sidebar.dragover-active .sidebar-drop-area {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  border-style: solid;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.45), inset 0 0 12px rgba(56, 189, 248, 0.25);
+  transform: scale(1.02);
+}
+
+.sidebar-drop-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.sidebar-drop-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: var(--accent-cyan, #38bdf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.sidebar-drop-area:hover .sidebar-drop-icon,
+.sidebar-drop-area.dragover .sidebar-drop-icon {
+  transform: scale(1.1) translateY(-1px);
+  background: rgba(56, 189, 248, 0.25);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.sidebar-drop-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-drop-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.sidebar-drop-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.2;
+}
+
+/* Sidebar Active Drag Overlay */
+.sidebar {
+  position: relative;
+}
+
+.sidebar.dragover-active {
+  z-index: 10002 !important;
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.35);
+  border-color: rgba(56, 189, 248, 0.6);
+}
+
+.sidebar-drag-badge {
+  position: absolute;
+  inset: 6px;
+  z-index: 100;
+  background: rgba(8, 16, 36, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 2px dashed #38bdf8;
+  border-radius: 14px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #38bdf8;
+  pointer-events: none;
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+  animation: sidebarDragPulse 1.4s ease-in-out infinite alternate;
+}
+
+.sidebar.dragover-active .sidebar-drag-badge {
+  display: flex;
+}
+
+@keyframes sidebarDragPulse {
+  0% { border-color: rgba(56, 189, 248, 0.6); box-shadow: 0 0 16px rgba(56, 189, 248, 0.2); }
+  100% { border-color: #38bdf8; box-shadow: 0 0 32px rgba(56, 189, 248, 0.5); }
+}
+
+.sidebar-drag-badge svg {
+  animation: floatBounce 1s ease-in-out infinite alternate;
+}
+
+@keyframes floatBounce {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-6px); }
+}
+
+.sidebar-drag-badge span {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.sidebar-drag-badge small {
+  font-size: 0.72rem;
+  color: #7dd3fc;
+}
+
+.empty-list-notice.sidebar-empty-drop {
+  cursor: pointer;
+  border: 1.5px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md, 10px);
+  padding: 30px 14px;
+  transition: all 0.2s;
+}
+
+.empty-list-notice.sidebar-empty-drop:hover {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
 /* -------------------------------------------------------------
    Student Item (Liquid Floating Glass Card)
    ------------------------------------------------------------- */

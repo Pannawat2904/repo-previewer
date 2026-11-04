@@ -51,6 +51,10 @@ const elements = {
   btnOpenCourseHub: document.getElementById('btnOpenCourseHub'),
 
   studentsList: document.getElementById('studentsList'),
+  mainSidebar: document.getElementById('mainSidebar'),
+  sidebarDropArea: document.getElementById('sidebarDropArea'),
+  sidebarFileInput: document.getElementById('sidebarFileInput'),
+  sidebarDragBadge: document.getElementById('sidebarDragBadge'),
   totalStudentsCount: document.getElementById('totalStudentsCount'),
   studentFilterSelect: document.getElementById('studentFilterSelect'),
   searchInput: document.getElementById('searchInput'),
@@ -1898,9 +1902,13 @@ function setupDragAndDropHandlers() {
 
     const files = await extractFilesFromDataTransfer(e.dataTransfer);
     if (files && files.length > 0) {
-      switchImportMode('upload');
-      addPendingUploadFiles(files);
-      openModal();
+      const modalOpen = elements.inputModal && elements.inputModal.style.display !== 'none';
+      if (modalOpen) {
+        switchImportMode('upload');
+        addPendingUploadFiles(files);
+      } else {
+        await uploadFilesDirectlyToActiveCourse(files);
+      }
     }
   });
 
@@ -1967,6 +1975,170 @@ function setupDragAndDropHandlers() {
       renderSelectedUploadFiles();
       showToast('ล้างรายการไฟล์ที่เลือกเรียบร้อย', 'info');
     });
+  }
+
+  // 6. Sidebar Drag-and-Drop Handlers (#mainSidebar & #sidebarDropArea)
+  const sidebarEl = elements.mainSidebar || document.getElementById('mainSidebar');
+  const dropAreaEl = elements.sidebarDropArea || document.getElementById('sidebarDropArea');
+  const sidebarFileInputEl = elements.sidebarFileInput || document.getElementById('sidebarFileInput');
+
+  if (dropAreaEl && sidebarFileInputEl) {
+    dropAreaEl.addEventListener('click', () => {
+      sidebarFileInputEl.click();
+    });
+
+    sidebarFileInputEl.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        await uploadFilesDirectlyToActiveCourse(files);
+      }
+      sidebarFileInputEl.value = '';
+    });
+  }
+
+  if (sidebarEl) {
+    let sidebarDragDepth = 0;
+
+    sidebarEl.addEventListener('dragenter', (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarDragDepth++;
+      sidebarEl.classList.add('dragover-active');
+      if (dropAreaEl) dropAreaEl.classList.add('dragover');
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+
+    sidebarEl.addEventListener('dragover', (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarEl.classList.add('dragover-active');
+      if (dropAreaEl) dropAreaEl.classList.add('dragover');
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+
+    sidebarEl.addEventListener('dragleave', (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarDragDepth--;
+      if (sidebarDragDepth <= 0) {
+        sidebarDragDepth = 0;
+        sidebarEl.classList.remove('dragover-active');
+        if (dropAreaEl) dropAreaEl.classList.remove('dragover');
+      }
+    });
+
+    sidebarEl.addEventListener('drop', async (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarDragDepth = 0;
+      sidebarEl.classList.remove('dragover-active');
+      if (dropAreaEl) dropAreaEl.classList.remove('dragover');
+      if (elements.windowDragOverlay) {
+        elements.windowDragOverlay.style.display = 'none';
+      }
+
+      const files = await extractFilesFromDataTransfer(e.dataTransfer);
+      if (files && files.length > 0) {
+        await uploadFilesDirectlyToActiveCourse(files);
+      }
+    });
+  }
+}
+
+async function uploadFilesDirectlyToActiveCourse(files) {
+  if (!files || files.length === 0) return;
+  const course = getActiveCourse();
+  if (!course) {
+    showToast('กรุณาเลือกรายวิชาก่อนนำเข้าไฟล์', 'warning');
+    return;
+  }
+
+  const allowedExts = ['py', 'ipynb', 'zip', 'html', 'htm', 'css', 'js', 'txt', 'csv', 'json'];
+  const validFiles = files.filter(f => {
+    if (!f || !f.name) return false;
+    if (f.name.startsWith('.') || f.name === '__MACOSX') return false;
+    const parts = f.name.split('.');
+    const ext = (parts.length > 1 ? parts.pop() : '').toLowerCase();
+    return allowedExts.includes(ext);
+  });
+
+  if (validFiles.length === 0) {
+    showToast('ไม่พบไฟล์ที่รองรับ (กรุณาเลือกไฟล์ .py, .ipynb, .zip, .html)', 'warning');
+    return;
+  }
+
+  showToast(`⏳ กำลังนำเข้าและตรวจวิเคราะห์ ${validFiles.length} ไฟล์...`, 'info');
+
+  try {
+    const encodedFiles = [];
+    for (const file of validFiles) {
+      const b64 = await fileToBase64(file);
+      encodedFiles.push({
+        filename: file.name,
+        content_base64: b64,
+        student_name: null,
+      });
+    }
+
+    const res = await fetch('/api/repos/upload-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: encodedFiles,
+        group_as_single_student: false,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || 'อัปโหลดไฟล์ไม่สำเร็จ');
+    }
+
+    const data = await res.json();
+    const newItems = (data.items || []).map(it => ({
+      ...it,
+      console_logs: [],
+      network_errors: [],
+    }));
+
+    if (newItems.length === 0) {
+      showToast('ไม่สามารถแยกไฟล์งานได้', 'warning');
+      return;
+    }
+
+    newItems.forEach(newItem => {
+      const existIdx = state.students.findIndex(s => s.key === newItem.key);
+      if (existIdx >= 0) {
+        state.students[existIdx] = newItem;
+      } else {
+        state.students.push(newItem);
+      }
+    });
+
+    syncActiveCourseState();
+    renderCourseSelect();
+    setHubSidebarMode(false);
+    renderStudentsList();
+    updateViewedStats();
+
+    // เลือกดูคนใหม่คนแรกทันที
+    const firstNewKey = newItems[0].key;
+    const targetIdx = state.students.findIndex(s => s.key === firstNewKey);
+    if (targetIdx >= 0) {
+      selectStudent(targetIdx);
+    }
+
+    showToast(`✓ นำเข้างานนักเรียน ${newItems.length} คนสำเร็จแล้ว`, 'success');
+  } catch (err) {
+    showToast(`เกิดข้อผิดพลาดในการนำเข้าไฟล์: ${err.message}`, 'error');
   }
 }
 
@@ -2349,10 +2521,19 @@ function renderStudentsList() {
 
   if (state.students.length === 0) {
     list.innerHTML = `
-      <div class="empty-list-notice">
-        <p>ยังไม่มีรายชื่อนักเรียน</p>
+      <div class="empty-list-notice sidebar-empty-drop" id="btnEmptyListDrop" title="ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเพิ่มงาน (.py, .zip)">
+        <div style="font-size: 1.8rem; margin-bottom: 4px;">📂</div>
+        <p style="margin: 0; font-weight: 600;">ยังไม่มีรายชื่อนักเรียน</p>
+        <span style="font-size: 0.75rem; color: #38bdf8;">ลากไฟล์มาวาง หรือคลิกเพิ่มงาน</span>
       </div>
     `;
+    const emptyDrop = document.getElementById('btnEmptyListDrop');
+    if (emptyDrop) {
+      emptyDrop.addEventListener('click', () => {
+        const input = elements.sidebarFileInput || document.getElementById('sidebarFileInput');
+        if (input) input.click();
+      });
+    }
     return;
   }
 

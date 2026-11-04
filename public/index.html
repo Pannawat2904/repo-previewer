@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261103-202">
+  <link rel="stylesheet" href="/static/app.css?v=20261104-1">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -196,6 +196,35 @@
           <div class="empty-list-notice">
             <p>ยังไม่มีรายชื่อนักเรียน</p>
           </div>
+        </div>
+
+        <!-- Sidebar Drop Area for Direct Drag-and-Drop & File Selection -->
+        <div class="sidebar-drop-area" id="sidebarDropArea" title="ลากไฟล์ (.py, .ipynb, .zip, .html) มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์">
+          <input type="file" id="sidebarFileInput" multiple accept=".py,.ipynb,.zip,.html,.htm,.txt" style="display: none;">
+          <div class="sidebar-drop-content">
+            <div class="sidebar-drop-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <div class="sidebar-drop-text">
+              <span class="sidebar-drop-title">ลากไฟล์มาวางที่นี่</span>
+              <span class="sidebar-drop-sub">หรือคลิกเพื่อเพิ่มงาน (.py, .zip)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Drag Overlay (Shown when dragging files over sidebar) -->
+        <div class="sidebar-drag-badge" id="sidebarDragBadge">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>ปล่อยไฟล์เพื่อนำเข้าทันที</span>
+          <small>รองรับ .py, .ipynb, .zip, .html</small>
         </div>
 
         <!-- Sidebar Summary Footer -->
@@ -657,6 +686,6 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261103-202"></script>
+  <script src="/static/app.js?v=20261104-1"></script>
 </body>
 </html>
