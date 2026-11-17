@@ -5,9 +5,10 @@
 
 import json
 import logging
+import re
 import threading
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from previewer.fetch import get_base_data_dir
 
@@ -119,6 +120,68 @@ DEFAULT_OOP_ASSIGNMENTS = [
 ]
 
 
+_WORK_KEYWORD_NUM_RE = re.compile(
+    r"(?:งานที่|ใบงานที่|งาน|ใบงาน|ข้อที่|ข้อ|แบบฝึกหัดที่|แบบฝึกหัด|สัปดาห์ที่|สัปดาห์|บทที่|lab|assignment|task|hw|week|project|work)\s*[:#.-]?\s*(\d+)",
+    re.IGNORECASE,
+)
+_LEADING_NUM_RE = re.compile(r"^\s*#?(\d+)(?:[\s.):\-]|$)")
+_ANY_NUM_RE = re.compile(r"(\d+)")
+
+
+def _assignment_sort_key(task: dict) -> tuple:
+    """คีย์สำหรับเรียงลำดับชิ้นงานตามเลขงาน 1, 2, 3, 4... อย่างเป็นธรรมชาติ"""
+    title = str(task.get("title") or "").strip()
+    task_id = str(task.get("id") or "").strip()
+
+    m = _WORK_KEYWORD_NUM_RE.search(title)
+    if m:
+        return (0, int(m.group(1)), title.lower(), task_id.lower())
+
+    m_lead = _LEADING_NUM_RE.match(title)
+    if m_lead:
+        return (0, int(m_lead.group(1)), title.lower(), task_id.lower())
+
+    m_any = _ANY_NUM_RE.search(title)
+    if m_any:
+        return (1, int(m_any.group(1)), title.lower(), task_id.lower())
+
+    m_id = _ANY_NUM_RE.search(task_id)
+    if m_id:
+        return (2, int(m_id.group(1)), title.lower(), task_id.lower())
+
+    return (3, float("inf"), title.lower(), task_id.lower())
+
+
+def sort_assignments_list(tasks: List[dict]) -> List[dict]:
+    """เรียงลำดับรายการชิ้นงานตามหมายเลขงาน (1, 2, 3, 4...)"""
+    return sorted(tasks, key=_assignment_sort_key)
+
+
+def _resolve_course_task_list(course_id: str, course_data: dict) -> List[dict]:
+    """คืนค่ารายการชิ้นงานของรายวิชา โดยเคารพกรณีลบงานจนว่างและเรียงลำดับเสมอ"""
+    if "assignments" in course_data and isinstance(course_data["assignments"], list):
+        return sort_assignments_list([dict(t) for t in course_data["assignments"]])
+
+    if "python" in course_id.lower() or "oop" in course_id.lower():
+        return sort_assignments_list([dict(t) for t in DEFAULT_OOP_ASSIGNMENTS])
+
+    return [{
+        "id": "task-1",
+        "title": course_data.get("title", "งานที่ 1"),
+        "prompt": course_data.get("prompt", ""),
+        "max_score": course_data.get("max_score", 10),
+    }]
+
+
+def _write_assignments_atomic(data: Dict[str, dict]) -> None:
+    """เขียนข้อมูล assignments ลงไฟล์แบบ atomic"""
+    ASSIGNMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_file = ASSIGNMENTS_FILE.with_suffix(".tmp")
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    temp_file.replace(ASSIGNMENTS_FILE)
+
+
 def load_all_assignments() -> Dict[str, dict]:
     """โหลดข้อมูลโจทย์และเกณฑ์ตรวจทั้งหมด (รองรับ Seed ข้อมูลเดิมบน Vercel)"""
     with _lock:
@@ -136,85 +199,51 @@ def load_all_assignments() -> Dict[str, dict]:
 
 
 def get_assignment(course_id: str) -> dict:
-    """ดึงข้อมูลโจทย์ของวิชา/งานนั้น ๆ พร้อมรายการงานย่อยทั้งหมด"""
+    """ดึงข้อมูลโจทย์ของวิชา/งานนั้น ๆ พร้อมรายการงานย่อยทั้งหมด (เรียงตามเลขงาน 1, 2, 3, 4)"""
     assignments = load_all_assignments()
     course_data = assignments.get(course_id, {})
+    task_list = _resolve_course_task_list(course_id, course_data)
 
-    # สำหรับวิชา Python OOP ให้มีชุดงาน 1-4 เริ่มต้น
-    if "python" in course_id.lower() or "oop" in course_id.lower():
-        task_list = course_data.get("assignments") or list(DEFAULT_OOP_ASSIGNMENTS)
-        active_id = course_data.get("active_assignment_id") or "work-4"
-        active_task = next((t for t in task_list if t["id"] == active_id), task_list[-1] if task_list else None)
-
-        if not active_task:
-            active_task = {
-                "id": "work-4",
-                "title": "งานที่ 4 โปรแกรมจัดการข้อมูลสินค้า (Product Class)",
-                "prompt": DEFAULT_ASSIGNMENT_PROMPT,
-                "max_score": 10,
-            }
-
+    if not task_list:
         return {
             "course_id": course_id,
-            "id": active_task.get("id", "work-4"),
-            "title": active_task.get("title", "งานที่ 4 โปรแกรมจัดการข้อมูลสินค้า (Product Class)"),
-            "prompt": active_task.get("prompt", DEFAULT_ASSIGNMENT_PROMPT),
-            "max_score": active_task.get("max_score", 10),
-            "active_assignment_id": active_id,
-            "assignments": task_list,
+            "id": "",
+            "title": "ยังไม่มีชิ้นงาน",
+            "prompt": "",
+            "max_score": 10,
+            "active_assignment_id": "",
+            "assignments": [],
         }
 
-    # วิชาทั่วไป
-    task_list = course_data.get("assignments", [])
-    if not task_list:
-        task_list = [{
-            "id": "task-1",
-            "title": course_data.get("title", "งานที่ 1"),
-            "prompt": course_data.get("prompt", ""),
-            "max_score": course_data.get("max_score", 10),
-        }]
-    active_id = course_data.get("active_assignment_id") or task_list[0]["id"]
-    active_task = next((t for t in task_list if t["id"] == active_id), task_list[0])
+    default_active = "work-4" if ("python" in course_id.lower() or "oop" in course_id.lower()) else task_list[0].get("id", "task-1")
+    active_id = course_data.get("active_assignment_id") or default_active
+    active_task = next((t for t in task_list if t.get("id") == active_id), task_list[0])
+    resolved_active_id = active_task.get("id", "")
 
     return {
         "course_id": course_id,
-        "id": active_task.get("id", "task-1"),
+        "id": resolved_active_id,
         "title": active_task.get("title", "โจทย์ประจำงาน"),
         "prompt": active_task.get("prompt", ""),
         "max_score": active_task.get("max_score", 10),
-        "active_assignment_id": active_id,
+        "active_assignment_id": resolved_active_id,
         "assignments": task_list,
     }
 
 
 def save_assignment(course_id: str, assignment_data: dict) -> dict:
-    """บันทึกหรืออัปเดตโจทย์และเกณฑ์ตรวจประจำวิชา"""
+    """บันทึกหรืออัปเดตโจทย์และเกณฑ์ตรวจประจำวิชา พร้อมจัดเรียงลำดับตามเลขงาน"""
     with _lock:
-        ASSIGNMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        if ASSIGNMENTS_FILE.exists():
-            try:
-                with open(ASSIGNMENTS_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = {}
+        data = load_all_assignments()
+        current_course = dict(data.get(course_id, {}))
+        existing_list = _resolve_course_task_list(course_id, current_course)
 
-        current_course = data.get(course_id, {})
-        existing_list = current_course.get("assignments")
-        if not existing_list:
-            if "python" in course_id.lower() or "oop" in course_id.lower():
-                existing_list = [dict(t) for t in DEFAULT_OOP_ASSIGNMENTS]
-            else:
-                existing_list = []
-
-        # ตรวจสอบ ID ของงานที่จะบันทึก
-        target_id = assignment_data.get("id") or current_course.get("active_assignment_id") or "work-4"
-        title = assignment_data.get("title", "").strip() or "โจทย์ประจำงาน"
-        prompt = assignment_data.get("prompt", "").strip()
+        target_id = (assignment_data.get("id") or "").strip() or current_course.get("active_assignment_id") or "work-1"
+        title = (assignment_data.get("title") or "").strip() or "โจทย์ประจำงาน"
+        prompt = (assignment_data.get("prompt") or "").strip()
         max_score = assignment_data.get("max_score", 10)
 
-        # หาว่ามีงานนี้ในลิสต์อยู่แล้วหรือไม่
-        idx = next((i for i, t in enumerate(existing_list) if t["id"] == target_id), -1)
+        idx = next((i for i, t in enumerate(existing_list) if t.get("id") == target_id), -1)
         item = {
             "id": target_id,
             "title": title,
@@ -226,19 +255,53 @@ def save_assignment(course_id: str, assignment_data: dict) -> dict:
         else:
             existing_list.append(item)
 
+        sorted_list = sort_assignments_list(existing_list)
+
         current_course["course_id"] = course_id
         current_course["active_assignment_id"] = target_id
-        current_course["assignments"] = existing_list
+        current_course["assignments"] = sorted_list
         current_course["title"] = title
         current_course["prompt"] = prompt
         current_course["max_score"] = max_score
 
         data[course_id] = current_course
+        _write_assignments_atomic(data)
 
-        temp_file = ASSIGNMENTS_FILE.with_suffix(".tmp")
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        temp_file.replace(ASSIGNMENTS_FILE)
+        return get_assignment(course_id)
+
+
+def delete_assignment(course_id: str, assignment_id: str) -> dict:
+    """ลบชิ้นงานย่อยออกจากรายวิชาและจัดเรียงลำดับงานที่เหลือ"""
+    with _lock:
+        data = load_all_assignments()
+        current_course = dict(data.get(course_id, {}))
+        existing_list = _resolve_course_task_list(course_id, current_course)
+
+        new_list = sort_assignments_list([t for t in existing_list if t.get("id") != assignment_id])
+        prev_active = current_course.get("active_assignment_id")
+
+        if new_list:
+            still_active = next((t for t in new_list if t.get("id") == prev_active), None)
+            next_task = still_active if still_active else new_list[0]
+            new_active_id = next_task.get("id", "")
+            new_title = next_task.get("title", "โจทย์ประจำงาน")
+            new_prompt = next_task.get("prompt", "")
+            new_max_score = next_task.get("max_score", 10)
+        else:
+            new_active_id = ""
+            new_title = "ยังไม่มีชิ้นงาน"
+            new_prompt = ""
+            new_max_score = 10
+
+        current_course["course_id"] = course_id
+        current_course["active_assignment_id"] = new_active_id
+        current_course["assignments"] = new_list
+        current_course["title"] = new_title
+        current_course["prompt"] = new_prompt
+        current_course["max_score"] = new_max_score
+
+        data[course_id] = current_course
+        _write_assignments_atomic(data)
 
         return get_assignment(course_id)
 

@@ -3970,6 +3970,28 @@ select.form-input {
   border-color: rgba(56, 189, 248, 0.45);
 }
 
+.btn-hub-link.danger {
+  color: #94a3b8;
+}
+
+.btn-hub-link.danger:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.btn-danger-subtle {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-danger-subtle:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.38);
+}
+
 .hub-select-wrapper {
   position: relative;
   width: 100%;

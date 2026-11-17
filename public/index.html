@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261117-clean2">
+  <link rel="stylesheet" href="/static/app.css?v=20261117-clean3">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -507,6 +507,7 @@
             <div class="modal-assignment-btn-actions">
               <button type="button" id="btnModalEditAssignment" class="btn btn-secondary btn-sm" title="ดูหรือแก้ไขข้อความโจทย์ของงานนี้">✏️ แก้โจทย์</button>
               <button type="button" id="btnModalAddAssignment" class="btn btn-outline btn-sm" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงาน</button>
+              <button type="button" id="btnModalDeleteAssignment" class="btn btn-danger-subtle btn-sm" title="ลบงานที่เลือกอยู่นี้">🗑️</button>
             </div>
           </div>
           <!-- Collapsible Prompt Preview -->
@@ -616,12 +617,13 @@ https://github.com/patvikan24-oss/my-profil-013
           <label class="form-label" for="modalAssignmentTaskSelect">
             <strong>เลือกชิ้นงานที่ต้องการตั้งค่า / ตรวจ:</strong>
           </label>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <div class="hub-select-wrapper" style="flex:1;">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <div class="hub-select-wrapper" style="flex:1; min-width:200px;">
               <select id="modalAssignmentTaskSelect" class="hub-assignment-select"></select>
               <svg class="hub-select-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <button type="button" id="btnAddNewAssignment" class="btn btn-secondary btn-sm" title="สร้างงานใหม่สำหรับการบ้านอื่น">+ เพิ่มงานใหม่</button>
+            <button type="button" id="btnDeleteAssignment" class="btn btn-danger-subtle btn-sm" title="ลบชิ้นงานที่เลือกอยู่นี้ออกจากรายวิชา">🗑️ ลบงานนี้</button>
           </div>
         </div>
 
@@ -719,6 +721,6 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261117-clean2"></script>
+  <script src="/static/app.js?v=20261117-clean3"></script>
 </body>
 </html>

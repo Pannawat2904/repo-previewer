@@ -5,7 +5,13 @@ from pathlib import Path
 from unittest.mock import patch
 from previewer.ai_grader import evaluate_with_ast_fallback, parse_prompt_specs
 import previewer.storage as storage
-from previewer.storage import DEFAULT_ASSIGNMENT_PROMPT, get_assignment, save_assignment
+from previewer.storage import (
+    DEFAULT_ASSIGNMENT_PROMPT,
+    delete_assignment,
+    get_assignment,
+    save_assignment,
+    sort_assignments_list,
+)
 
 class TestAiGrader(unittest.TestCase):
     def setUp(self):
@@ -138,6 +144,64 @@ class Product
         self.assertEqual(result["score"], 0)
         self.assertEqual(result["status"], "failed")
         self.assertIn("SyntaxError", result["summary"])
+
+    def test_sort_assignments_natural_order(self):
+        unsorted = [
+            {"id": "custom-10", "title": "งานที่ 10 โปรเจกต์ใหญ่"},
+            {"id": "custom-4", "title": "งานที่ 4 จัดการสินค้า"},
+            {"id": "custom-2", "title": "งานที่ 2 คลาส Student"},
+            {"id": "custom-1", "title": "งานที่ 1 พื้นฐาน Python 3"},
+            {"id": "custom-3", "title": "งาน 3 BankAccount"},
+        ]
+        sorted_items = sort_assignments_list(unsorted)
+        self.assertEqual(
+            [item["id"] for item in sorted_items],
+            ["custom-1", "custom-2", "custom-3", "custom-4", "custom-10"],
+        )
+
+    def test_save_keeps_sorted_and_delete_assignment(self):
+        # เพิ่มงานที่ 10 และงานที่ 0/พิเศษ แล้วตรวจว่าลิสต์ถูกเรียงเป็น 1, 2, 3, 4, 10
+        save_assignment("course-python-oop-1", {
+            "id": "work-10",
+            "title": "งานที่ 10 แบบทดสอบปลายภาค",
+            "prompt": "สรุปบทเรียน",
+            "max_score": 10,
+        })
+        save_assignment("course-python-oop-1", {
+            "id": "work-2b",
+            "title": "งานที่ 2.5 โจทย์เสริม",
+            "prompt": "โจทย์เสริม",
+            "max_score": 10,
+        })
+        asg = get_assignment("course-python-oop-1")
+        ids = [t["id"] for t in asg["assignments"]]
+        self.assertEqual(ids[:4], ["work-1", "work-2", "work-2b", "work-3"])
+        self.assertEqual(ids[-2:], ["work-4", "work-10"])
+
+        # ลบงานที่ active อยู่ (work-2b) -> ต้องสลับไปที่ตัวแรกและยังเรียงถูกต้อง
+        after_del = delete_assignment("course-python-oop-1", "work-2b")
+        after_ids = [t["id"] for t in after_del["assignments"]]
+        self.assertNotIn("work-2b", after_ids)
+        self.assertEqual(after_ids, ["work-1", "work-2", "work-3", "work-4", "work-10"])
+        self.assertEqual(after_del["active_assignment_id"], "work-1")
+
+        # ลบงานทั้งหมด -> ต้องเป็น list ว่างจริง ไม่คืนค่าเริ่มต้นกลับมา
+        for tid in list(after_ids):
+            after_empty = delete_assignment("course-python-oop-1", tid)
+        self.assertEqual(after_empty["assignments"], [])
+        self.assertEqual(after_empty["active_assignment_id"], "")
+
+    def test_delete_assignment_http_endpoint(self):
+        from fastapi.testclient import TestClient
+        import app as main_app
+
+        client = TestClient(main_app.app)
+        resp = client.delete("/api/assignment/course-python-oop-1/work-2")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        ids = [t["id"] for t in body["assignments"]]
+        self.assertEqual(ids, ["work-1", "work-3", "work-4"])
+
 
 if __name__ == "__main__":
     unittest.main()

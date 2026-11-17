@@ -42,6 +42,7 @@ from previewer.links import RepoItem, normalize_github_url, parse_bulk_links, pa
 from previewer.python_inspector import analyze_python_source, inspect_python_project, parse_ipynb_content
 from previewer.serve import CONSOLE_INJECT_SCRIPT, find_index_html, server_manager
 from previewer.storage import (
+    delete_assignment,
     get_assignment,
     get_review,
     load_all_reviews,
@@ -451,6 +452,12 @@ async def api_save_assignment(course_id: str, req: AssignmentSaveRequest):
         "max_score": req.max_score or 10,
     }
     return save_assignment(course_id, data)
+
+
+@app.delete("/api/assignment/{course_id}/{assignment_id}")
+async def api_delete_assignment(course_id: str, assignment_id: str):
+    """ลบชิ้นงานย่อยออกจากรายวิชาและจัดเรียงลำดับงานที่เหลือ"""
+    return delete_assignment(course_id, assignment_id)
 
 
 
