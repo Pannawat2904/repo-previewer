@@ -13,8 +13,10 @@ from previewer.fetch import get_base_data_dir
 
 logger = logging.getLogger(__name__)
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 STORAGE_FILE = get_base_data_dir() / "reviews.json"
 ASSIGNMENTS_FILE = get_base_data_dir() / "assignments.json"
+SEED_ASSIGNMENTS_FILE = BASE_DIR / "data" / "assignments.json"
 CONFIG_FILE = get_base_data_dir() / "config.json"
 _lock = threading.RLock()
 
@@ -118,12 +120,15 @@ DEFAULT_OOP_ASSIGNMENTS = [
 
 
 def load_all_assignments() -> Dict[str, dict]:
-    """โหลดข้อมูลโจทย์และเกณฑ์ตรวจทั้งหมด"""
+    """โหลดข้อมูลโจทย์และเกณฑ์ตรวจทั้งหมด (รองรับ Seed ข้อมูลเดิมบน Vercel)"""
     with _lock:
-        if not ASSIGNMENTS_FILE.exists():
+        target = ASSIGNMENTS_FILE
+        if not target.exists() and SEED_ASSIGNMENTS_FILE.exists():
+            target = SEED_ASSIGNMENTS_FILE
+        if not target.exists():
             return {}
         try:
-            with open(ASSIGNMENTS_FILE, "r", encoding="utf-8") as f:
+            with open(target, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.warning(f"Error loading assignments storage: {e}")

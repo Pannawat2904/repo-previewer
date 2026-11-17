@@ -154,6 +154,13 @@ const elements = {
   geminiKeyMessage: document.getElementById('geminiKeyMessage'),
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
+  modalImportAssignmentPanel: document.getElementById('modalImportAssignmentPanel'),
+  modalImportAssignmentSelect: document.getElementById('modalImportAssignmentSelect'),
+  btnModalAddAssignment: document.getElementById('btnModalAddAssignment'),
+  btnModalEditAssignment: document.getElementById('btnModalEditAssignment'),
+  modalPromptPreviewBox: document.getElementById('modalPromptPreviewBox'),
+  modalPromptPreviewTaskTitle: document.getElementById('modalPromptPreviewTaskTitle'),
+  modalPromptPreviewSnippet: document.getElementById('modalPromptPreviewSnippet'),
   assignmentPickerGroup: document.getElementById('assignmentPickerGroup'),
   assignmentPickerSelect: document.getElementById('assignmentPickerSelect'),
   btnQuickEditAssignment: document.getElementById('btnQuickEditAssignment'),
@@ -204,9 +211,50 @@ document.addEventListener('DOMContentLoaded', () => {
 // -------------------------------------------------------------
 // Multi-Course / Subject & Assignment Management
 // -------------------------------------------------------------
-function initCoursesState() {
+function formatPromptSnippet(promptText, maxLines = 4) {
+  if (!promptText || typeof promptText !== 'string' || !promptText.trim()) {
+    return 'ยังไม่มีข้อกำหนดโจทย์ (คลิก "+ เพิ่มงาน" หรือ "✏️ แก้โจทย์" เพื่อระบุคำสั่ง)';
+  }
+  const lines = promptText
+    .trim()
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0 && l !== '---' && l !== '***');
+  return lines.slice(0, maxLines).join('\n');
+}
+
+async function initCoursesState() {
+  // กู้คืนวิชาล่าสุดที่เลือกไว้ถ้าเคยเลือกไว้
+  try {
+    const savedActiveId = localStorage.getItem('repo_previewer_active_course');
+    if (savedActiveId && state.courses.some(c => c.id === savedActiveId)) {
+      state.activeCourseId = savedActiveId;
+    }
+  } catch (e) {}
+
+  // โหลดแคชของโจทย์แต่ละวิชาจาก localStorage เพื่อแสดงผลทันทีแบบไม่มีแล็ก
+  state.courses.forEach(c => {
+    try {
+      const cached = localStorage.getItem('repo_previewer_assignments_' + c.id);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        state.courseAssignments = state.courseAssignments || {};
+        state.courseAssignments[c.id] = parsed;
+        if (parsed.title) {
+          c.assignment = parsed.title;
+        }
+      }
+    } catch (e) {}
+  });
+
   renderCourseSelect();
-  fetchCourseAssignments(state.activeCourseId);
+  renderCourseHub();
+  renderAssignmentPickers();
+
+  // ดึงโจทย์และเกณฑ์ตรวจล่าสุดของทุกวิชาจากเซิร์ฟเวอร์แบบเบื้องหลัง
+  for (const c of state.courses) {
+    fetchCourseAssignments(c.id);
+  }
 }
 
 function getActiveCourse() {
@@ -302,6 +350,21 @@ function renderCourseHub() {
     const pct = total > 0 ? Math.round((viewed / total) * 100) : 0;
     const theme = detectCourseTheme(course.subject);
 
+    const courseData = (state.courseAssignments && state.courseAssignments[course.id]) || null;
+    const taskList = (courseData && courseData.assignments && courseData.assignments.length > 0)
+      ? courseData.assignments
+      : [
+          {
+            id: 'work-1',
+            title: course.assignment || 'ชิ้นงานที่ 1',
+            prompt: course.id.includes('python') || course.id.includes('oop') ? DEFAULT_PRODUCT_PROMPT : '',
+            max_score: 10,
+          }
+        ];
+    const activeTaskId = (courseData && courseData.active_assignment_id) || taskList[0].id;
+    const activeTask = taskList.find(t => t.id === activeTaskId) || taskList[0];
+    const promptSnippet = formatPromptSnippet(activeTask.prompt, 3);
+
     const card = document.createElement('div');
     card.className = `course-hub-card ${theme.accentClass} ${isActive ? 'active' : ''}`;
     card.innerHTML = `
@@ -317,8 +380,30 @@ function renderCourseHub() {
 
       <div class="course-hub-card-body">
         <h3 class="course-hub-title">${escapeHtml(course.subject)}</h3>
-        <div class="course-hub-assign-row">
-          <span class="course-hub-assign-tag">${escapeHtml(course.assignment)}</span>
+
+        <div class="hub-assignment-panel">
+          <div class="hub-assignment-header">
+            <div class="hub-assignment-label">
+              <span>📋</span>
+              <strong>ชิ้นงาน & โจทย์:</strong>
+            </div>
+            <div class="hub-assignment-btns">
+              <button type="button" class="btn btn-secondary btn-sm btn-hub-add-task" data-course-id="${escapeHtml(course.id)}" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงาน</button>
+              <button type="button" class="btn btn-outline btn-sm btn-hub-edit-task" data-course-id="${escapeHtml(course.id)}" title="ดูหรือแก้ไขโจทย์ของงานนี้">✏️ แก้โจทย์</button>
+            </div>
+          </div>
+          <div class="hub-assignment-select-wrap">
+            <select class="hub-assignment-select" data-course-id="${escapeHtml(course.id)}" title="เลือกชิ้นงานและโจทย์ที่จะตรวจ">
+              ${taskList.map(t => `<option value="${escapeHtml(t.id)}"${t.id === activeTaskId ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="hub-prompt-snippet-card" title="ข้อกำหนดโจทย์ของงานนี้">
+            <div class="hub-prompt-snippet-header">
+              <span class="hub-prompt-badge">🎯 ข้อกำหนด</span>
+              <span class="hub-prompt-task-name">${escapeHtml(activeTask.title)}</span>
+            </div>
+            <div class="hub-prompt-text-preview">${escapeHtml(promptSnippet)}</div>
+          </div>
         </div>
       </div>
 
@@ -356,9 +441,46 @@ function renderCourseHub() {
       </div>
     `;
 
+    // ผูก Event Selector & Buttons ใน Hub Card
+    const hubSelect = card.querySelector('.hub-assignment-select');
+    if (hubSelect) {
+      hubSelect.addEventListener('click', (e) => e.stopPropagation());
+      hubSelect.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        if (course.id !== state.activeCourseId) {
+          switchCourse(course.id);
+        }
+        await handleSwitchAssignmentTask(e.target.value);
+        renderCourseHub();
+      });
+    }
+
+    const btnHubAdd = card.querySelector('.btn-hub-add-task');
+    if (btnHubAdd) {
+      btnHubAdd.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (course.id !== state.activeCourseId) {
+          switchCourse(course.id);
+        }
+        await openAssignmentModal();
+        handleAddNewAssignmentTask();
+      });
+    }
+
+    const btnHubEdit = card.querySelector('.btn-hub-edit-task');
+    if (btnHubEdit) {
+      btnHubEdit.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (course.id !== state.activeCourseId) {
+          switchCourse(course.id);
+        }
+        await openAssignmentModal();
+      });
+    }
+
     // คลิกที่ตัวการ์ดเพื่อเลือกวิชานี้ทันที
     card.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button') || e.target.closest('select')) return;
       switchCourse(course.id);
     });
 
@@ -437,6 +559,7 @@ function openCourseHub() {
 function switchCourse(courseId) {
   if (courseId === state.activeCourseId) {
     renderCourseSelect();
+    renderAssignmentPickers();
     return;
   }
   syncActiveCourseState();
@@ -445,6 +568,10 @@ function switchCourse(courseId) {
   if (!target) return;
 
   state.activeCourseId = target.id;
+  try {
+    localStorage.setItem('repo_previewer_active_course', target.id);
+  } catch (e) {}
+
   state.students = target.students || [];
   state.currentIndex = typeof target.currentIndex === 'number' ? target.currentIndex : -1;
   if (elements.bulkLinksTextarea) {
@@ -457,6 +584,7 @@ function switchCourse(courseId) {
   switchImportMode(theme.defaultImport);
 
   renderCourseSelect();
+  renderAssignmentPickers();
   renderStudentsList();
   updateViewedStats();
   fetchCourseAssignments(target.id);
@@ -562,6 +690,20 @@ function setupEventListeners() {
   }
   if (elements.btnAddNewAssignment) {
     elements.btnAddNewAssignment.addEventListener('click', handleAddNewAssignmentTask);
+  }
+  if (elements.modalImportAssignmentSelect) {
+    elements.modalImportAssignmentSelect.addEventListener('change', (e) => {
+      handleSwitchAssignmentTask(e.target.value);
+    });
+  }
+  if (elements.btnModalAddAssignment) {
+    elements.btnModalAddAssignment.addEventListener('click', async () => {
+      await openAssignmentModal();
+      handleAddNewAssignmentTask();
+    });
+  }
+  if (elements.btnModalEditAssignment) {
+    elements.btnModalEditAssignment.addEventListener('click', openAssignmentModal);
   }
   if (elements.btnCollapseSidebarDesktop) {
     elements.btnCollapseSidebarDesktop.addEventListener('click', toggleDesktopSidebar);
@@ -788,13 +930,19 @@ async function fetchCourseAssignments(courseId) {
       const data = await res.json();
       state.courseAssignments = state.courseAssignments || {};
       state.courseAssignments[courseId] = data;
+      try {
+        localStorage.setItem('repo_previewer_assignments_' + courseId, JSON.stringify(data));
+      } catch (e) {}
       const course = state.courses.find(c => c.id === courseId);
       if (course && data.title) {
         course.assignment = data.title;
         renderCourseSelect();
       }
+      renderCourseHub();
       renderAssignmentPickers();
-      renderStudioPromptPane(getCurrentStudent());
+      if (courseId === state.activeCourseId) {
+        renderStudioPromptPane(getCurrentStudent());
+      }
     }
   } catch (e) {
     console.warn('Could not fetch course assignments:', e);
@@ -805,7 +953,9 @@ function getActiveAssignmentData() {
   const course = getActiveCourse();
   if (!course) return null;
   const courseData = (state.courseAssignments && state.courseAssignments[course.id]) || null;
-  const taskList = (courseData && courseData.assignments) || [];
+  const taskList = (courseData && courseData.assignments && courseData.assignments.length > 0)
+    ? courseData.assignments
+    : [];
   const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || 'work-4';
   const activeTask = taskList.find(t => t.id === activeId) || courseData;
 
@@ -835,8 +985,18 @@ function renderAssignmentPickers() {
   const course = getActiveCourse();
   if (!course) return;
   const courseData = (state.courseAssignments && state.courseAssignments[course.id]) || null;
-  const taskList = (courseData && courseData.assignments) || [];
-  const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || 'work-4';
+  const taskList = (courseData && courseData.assignments && courseData.assignments.length > 0)
+    ? courseData.assignments
+    : [
+        {
+          id: 'work-1',
+          title: course.assignment || 'ชิ้นงานที่ 1',
+          prompt: course.id.includes('python') || course.id.includes('oop') ? DEFAULT_PRODUCT_PROMPT : '',
+          max_score: 10,
+        }
+      ];
+  const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || 'work-1';
+  const activeTask = taskList.find(t => t.id === activeId) || taskList[0];
 
   const isPythonOrHasTasks = taskList.length > 0 || course.id.includes('python') || course.id.includes('oop');
 
@@ -865,6 +1025,24 @@ function renderAssignmentPickers() {
       elements.modalAssignmentTaskSelect.appendChild(opt);
     });
   }
+
+  if (elements.modalImportAssignmentSelect) {
+    elements.modalImportAssignmentSelect.innerHTML = '';
+    taskList.forEach(task => {
+      const opt = document.createElement('option');
+      opt.value = task.id;
+      opt.textContent = task.title;
+      if (task.id === activeId) opt.selected = true;
+      elements.modalImportAssignmentSelect.appendChild(opt);
+    });
+  }
+
+  if (elements.modalPromptPreviewTaskTitle && activeTask) {
+    elements.modalPromptPreviewTaskTitle.textContent = activeTask.title;
+  }
+  if (elements.modalPromptPreviewSnippet && activeTask) {
+    elements.modalPromptPreviewSnippet.textContent = formatPromptSnippet(activeTask.prompt, 4);
+  }
 }
 
 async function handleSwitchAssignmentTask(taskId) {
@@ -882,6 +1060,10 @@ async function handleSwitchAssignmentTask(taskId) {
   courseData.max_score = targetTask.max_score || 10;
   course.assignment = targetTask.title;
 
+  try {
+    localStorage.setItem('repo_previewer_assignments_' + course.id, JSON.stringify(courseData));
+  } catch (e) {}
+
   // Reset student assignment evaluation if for a previous task
   state.students.forEach(s => {
     if (s.assignment_evaluation && s.assignment_evaluation.assignment_id !== taskId) {
@@ -890,6 +1072,7 @@ async function handleSwitchAssignmentTask(taskId) {
   });
 
   renderCourseSelect();
+  renderCourseHub();
   renderAssignmentPickers();
   updateAssignmentGradeBadge(getCurrentStudent());
   renderStudioPromptPane(getCurrentStudent());
@@ -1073,8 +1256,12 @@ async function handleSaveAssignment() {
       const updated = await res.json();
       state.courseAssignments = state.courseAssignments || {};
       state.courseAssignments[course.id] = updated;
+      try {
+        localStorage.setItem('repo_previewer_assignments_' + course.id, JSON.stringify(updated));
+      } catch (e) {}
       course.assignment = updated.title || title;
       renderCourseSelect();
+      renderCourseHub();
       renderAssignmentPickers();
       renderStudioPromptPane(getCurrentStudent());
       closeAssignmentModal();
@@ -1696,6 +1883,7 @@ function setupIframeMessageListener() {
 // -------------------------------------------------------------
 function openModal() {
   elements.inputModal.style.display = 'flex';
+  renderAssignmentPickers();
   if (state.importMode === 'upload') {
     renderSelectedUploadFiles();
   } else {

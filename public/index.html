@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261104-1">
+  <link rel="stylesheet" href="/static/app.css?v=20261117-1">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -242,9 +242,9 @@
         <div id="blankState" class="blank-state course-hub-screen">
           <div class="course-hub-container">
             <div class="course-hub-hero">
-              <span class="course-hub-eyebrow">WORKSPACE</span>
-              <h2>เลือกรายวิชาที่ต้องการตรวจ</h2>
-              <p>เลือกห้องเรียนเพื่อดูรายชื่อนักเรียนหรือนำเข้างานตรวจใหม่</p>
+              <span class="course-hub-eyebrow">WORKSPACE & ASSIGNMENT HUB</span>
+              <h2>เลือกรายวิชาและงานที่ต้องการตรวจ</h2>
+              <p>เลือกงานและตรวจสอบโจทย์ก่อนเริ่มตรวจ หรือกดเพิ่มโจทย์ใหม่สำหรับแต่ละชิ้นงานได้ทันที</p>
             </div>
 
             <!-- Interactive Course Cards Grid (Populated dynamically by app.js) -->
@@ -489,6 +489,31 @@
         <button id="btnCloseModal" class="btn-close">&times;</button>
       </div>
       <div class="modal-body">
+        <!-- Assignment & Prompt Selector in Import Modal -->
+        <div class="modal-assignment-panel" id="modalImportAssignmentPanel">
+          <div class="modal-assignment-row">
+            <div class="modal-assignment-field">
+              <label for="modalImportAssignmentSelect" class="modal-assignment-label">
+                <span class="icon">📋</span>
+                <strong>เลือกงานที่จะนำเข้าตรวจ:</strong>
+              </label>
+              <select id="modalImportAssignmentSelect" class="form-input modal-assignment-select" title="เลือกงานที่ต้องการตรวจ"></select>
+            </div>
+            <div class="modal-assignment-btn-actions">
+              <button type="button" id="btnModalAddAssignment" class="btn btn-secondary btn-sm" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงานใหม่</button>
+              <button type="button" id="btnModalEditAssignment" class="btn btn-outline btn-sm" title="ดูหรือแก้ไขข้อความโจทย์ของงานนี้">✏️ แก้โจทย์</button>
+            </div>
+          </div>
+          <!-- Collapsible Prompt Preview -->
+          <div id="modalPromptPreviewBox" class="modal-prompt-preview-box">
+            <div class="prompt-preview-top">
+              <span class="prompt-pill-mini">🎯 ข้อกำหนดโจทย์</span>
+              <span id="modalPromptPreviewTaskTitle" class="prompt-preview-task-title">ชื่องาน</span>
+            </div>
+            <div id="modalPromptPreviewSnippet" class="prompt-preview-snippet"></div>
+          </div>
+        </div>
+
         <!-- Import Mode Switcher Tabs -->
         <div class="import-mode-tabs">
           <button type="button" class="import-mode-tab active" data-import-mode="github">
@@ -686,6 +711,6 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261104-1"></script>
+  <script src="/static/app.js?v=20261117-1"></script>
 </body>
 </html>

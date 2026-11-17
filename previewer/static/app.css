@@ -3660,10 +3660,231 @@ kbd {
 .course-hub-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(295px, 340px));
+  grid-template-columns: repeat(auto-fit, minmax(330px, 460px));
   justify-content: center;
-  gap: 18px;
+  gap: 20px;
   text-align: left;
+}
+
+/* Hub Card Assignment Chooser Panel */
+.hub-assignment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.hub-assignment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hub-assignment-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.hub-assignment-label strong {
+  color: #e2e8f0;
+}
+
+.hub-assignment-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hub-assignment-btns .btn-sm {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  height: 25px;
+}
+
+.hub-assignment-select-wrap {
+  width: 100%;
+}
+
+.hub-assignment-select {
+  width: 100%;
+  height: 32px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f8fafc;
+  background: rgba(10, 16, 32, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.hub-assignment-select:focus,
+.hub-assignment-select:hover {
+  border-color: var(--accent-cyan);
+}
+
+.hub-prompt-snippet-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hub-prompt-snippet-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+}
+
+.hub-prompt-badge {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.65rem;
+}
+
+.hub-prompt-task-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hub-prompt-text-preview {
+  font-size: 0.73rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  white-space: pre-line;
+  max-height: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-code);
+}
+
+/* Modal Assignment Selection Panel */
+.modal-assignment-panel {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.8));
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.modal-assignment-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-assignment-field {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.modal-assignment-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.modal-assignment-label strong {
+  color: #38bdf8;
+}
+
+.modal-assignment-select {
+  height: 36px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: rgba(10, 16, 32, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #f8fafc;
+  padding: 0 10px;
+}
+
+.modal-assignment-btn-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 1px;
+}
+
+.modal-assignment-btn-actions .btn-sm {
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  height: 36px;
+}
+
+.modal-prompt-preview-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt-preview-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+
+.prompt-pill-mini {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.65rem;
+}
+
+.prompt-preview-task-title {
+  color: #f8fafc;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-preview-snippet {
+  font-size: 0.74rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  white-space: pre-line;
+  max-height: 72px;
+  overflow-y: auto;
+  font-family: var(--font-code);
 }
 
 .course-hub-card {
