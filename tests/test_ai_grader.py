@@ -202,6 +202,78 @@ class Product
         ids = [t["id"] for t in body["assignments"]]
         self.assertEqual(ids, ["work-1", "work-3", "work-4"])
 
+    def test_is_seed_and_client_assignments_cold_start_and_1_to_40_slots(self):
+        import previewer.storage as storage
+
+        # 1) ก่อนบันทึกครั้งแรก get_assignment ต้องคืน is_seed=True
+        initial = storage.get_assignment("course-python-oop-1")
+        self.assertTrue(initial.get("is_seed"))
+
+        # 2) ลบงาน 1-3 เหลือแค่งาน 4 แล้วบันทึก -> is_seed ต้องเป็น False
+        storage.delete_assignment("course-python-oop-1", "work-1")
+        storage.delete_assignment("course-python-oop-1", "work-2")
+        storage.delete_assignment("course-python-oop-1", "work-3")
+        after_del = storage.get_assignment("course-python-oop-1")
+        self.assertFalse(after_del.get("is_seed"))
+        self.assertEqual([t["id"] for t in after_del["assignments"]], ["work-4"])
+
+        # 3) จำลอง Vercel Cold Start (ลบไฟล์ ASSIGNMENTS_FILE) แล้วครูใส่ "งานที่ 1" ย้อนหลัง + งานที่ 40
+        if storage.ASSIGNMENTS_FILE.exists():
+            storage.ASSIGNMENTS_FILE.unlink()
+        self.assertTrue(storage.get_assignment("course-python-oop-1").get("is_seed"))
+
+        saved_1 = storage.save_assignment(
+            "course-python-oop-1",
+            {
+                "id": "work-1",
+                "title": "งานที่ 1 โจทย์ใหม่",
+                "prompt": "โจทย์ย้อนหลังงานที่ 1",
+                "max_score": 10,
+                "client_assignments": after_del["assignments"],
+            },
+        )
+        self.assertFalse(saved_1.get("is_seed"))
+        self.assertEqual([t["id"] for t in saved_1["assignments"]], ["work-1", "work-4"])
+
+        saved_40 = storage.save_assignment(
+            "course-python-oop-1",
+            {
+                "id": "work-40",
+                "title": "งานที่ 40 โปรเจกต์ปลายภาค",
+                "prompt": "โปรเจกต์จบ",
+                "max_score": 10,
+            },
+        )
+        self.assertEqual(
+            [t["id"] for t in saved_40["assignments"]],
+            ["work-1", "work-4", "work-40"],
+        )
+
+        # ตรวจสอบผ่าน HTTP POST /api/assignment/{course_id} ด้วยว่า client_assignments ไม่ถูก seed ทับหลัง cold start
+        if storage.ASSIGNMENTS_FILE.exists():
+            storage.ASSIGNMENTS_FILE.unlink()
+        from fastapi.testclient import TestClient
+        import app as main_app
+
+        client = TestClient(main_app.app)
+        resp = client.post(
+            "/api/assignment/course-python-oop-1",
+            json={
+                "id": "work-2",
+                "title": "งานที่ 2 ใส่ย้อนหลัง",
+                "prompt": "โจทย์งาน 2",
+                "max_score": 10,
+                "client_assignments": saved_40["assignments"],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertFalse(body.get("is_seed"))
+        self.assertEqual(
+            [t["id"] for t in body["assignments"]],
+            ["work-1", "work-2", "work-4", "work-40"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

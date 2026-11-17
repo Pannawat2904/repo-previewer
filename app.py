@@ -199,6 +199,7 @@ class AssignmentSaveRequest(BaseModel):
     title: Optional[str] = "โจทย์ประจำงาน"
     prompt: str
     max_score: Optional[int] = 10
+    client_assignments: Optional[List[dict]] = None
 
 
 class AssignmentGradeRequest(BaseModel):
@@ -450,6 +451,7 @@ async def api_save_assignment(course_id: str, req: AssignmentSaveRequest):
         "title": req.title or "โจทย์ประจำงาน",
         "prompt": req.prompt,
         "max_score": req.max_score or 10,
+        "client_assignments": req.client_assignments,
     }
     return save_assignment(course_id, data)
 

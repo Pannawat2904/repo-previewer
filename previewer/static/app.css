@@ -3986,10 +3986,26 @@ select.form-input {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.btn-danger-subtle:hover {
+.btn-danger-subtle:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.16);
   color: #fca5a5;
   border-color: rgba(239, 68, 68, 0.38);
+}
+
+.btn-danger-subtle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-slot-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  min-height: 18px;
+}
+
+.modal-slot-hint.is-new {
+  color: #7dd3fc;
 }
 
 .hub-select-wrapper {

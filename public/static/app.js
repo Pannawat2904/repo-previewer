@@ -155,6 +155,7 @@ const elements = {
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
   btnDeleteAssignment: document.getElementById('btnDeleteAssignment'),
+  modalSlotModeHint: document.getElementById('modalSlotModeHint'),
   modalImportAssignmentPanel: document.getElementById('modalImportAssignmentPanel'),
   modalImportAssignmentSelect: document.getElementById('modalImportAssignmentSelect'),
   btnModalAddAssignment: document.getElementById('btnModalAddAssignment'),
@@ -454,12 +455,13 @@ function renderCourseHub() {
             </div>
           </div>
           <div class="hub-select-wrapper">
-            <select class="hub-assignment-select" data-course-id="${escapeHtml(course.id)}" title="เลือกงานที่ต้องการตรวจ" ${taskList.length === 0 ? 'disabled' : ''}>
+            <select class="hub-assignment-select" data-course-id="${escapeHtml(course.id)}" title="เลือกงานที่ต้องการตรวจ">
               ${
                 taskList.length > 0
                   ? taskList.map(t => `<option value="${escapeHtml(t.id)}"${t.id === activeTaskId ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')
-                  : '<option value="" disabled selected>ยังไม่มีงาน (กด + เพิ่มงาน)</option>'
+                  : '<option value="" disabled selected>ยังไม่มีงานในรายวิชา</option>'
               }
+              <option value="__add_slot__">➕ เพิ่มงานใหม่ / ใส่ย้อนหลัง (งาน 1–40)...</option>
             </select>
             <svg class="hub-select-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </div>
@@ -507,10 +509,16 @@ function renderCourseHub() {
       hubSelect.addEventListener('click', (e) => e.stopPropagation());
       hubSelect.addEventListener('change', async (e) => {
         e.stopPropagation();
+        const chosen = e.target.value;
         if (course.id !== state.activeCourseId) {
           switchCourse(course.id);
         }
-        await handleSwitchAssignmentTask(e.target.value);
+        if (chosen === '__add_slot__') {
+          e.target.value = activeTaskId || '';
+          await openAssignmentModal('__first_empty__');
+          return;
+        }
+        await handleSwitchAssignmentTask(chosen);
         renderCourseHub();
       });
     }
@@ -522,8 +530,7 @@ function renderCourseHub() {
         if (course.id !== state.activeCourseId) {
           switchCourse(course.id);
         }
-        await openAssignmentModal();
-        handleAddNewAssignmentTask();
+        await openAssignmentModal('__first_empty__');
       });
     }
 
@@ -742,6 +749,11 @@ function setupEventListeners() {
   }
   if (elements.assignmentPickerSelect) {
     elements.assignmentPickerSelect.addEventListener('change', (e) => {
+      if (e.target.value === '__add_slot__') {
+        renderAssignmentPickers();
+        openAssignmentModal('__first_empty__');
+        return;
+      }
       handleSwitchAssignmentTask(e.target.value);
     });
   }
@@ -770,13 +782,17 @@ function setupEventListeners() {
   }
   if (elements.modalImportAssignmentSelect) {
     elements.modalImportAssignmentSelect.addEventListener('change', (e) => {
+      if (e.target.value === '__add_slot__') {
+        renderAssignmentPickers();
+        openAssignmentModal('__first_empty__');
+        return;
+      }
       handleSwitchAssignmentTask(e.target.value);
     });
   }
   if (elements.btnModalAddAssignment) {
-    elements.btnModalAddAssignment.addEventListener('click', async () => {
-      await openAssignmentModal();
-      handleAddNewAssignmentTask();
+    elements.btnModalAddAssignment.addEventListener('click', () => {
+      openAssignmentModal('__first_empty__');
     });
   }
   if (elements.btnModalEditAssignment) {
@@ -1002,37 +1018,138 @@ const DEFAULT_PRODUCT_PROMPT = `คำชี้แจง ให้นักเ�
 
 ** นักเรียนสามารถเลือกชื่อสินค้าและกำหนดราคาเองได้ โดยต้องสร้าง Object อย่างน้อย 2 รายการ และคำนวณผลลัพธ์ได้ถูกต้อง`;
 
-function persistCourseAssignmentsState(courseId, data) {
+const MAX_ASSIGNMENT_SLOTS = 40;
+
+function isCourseAssignmentsDirty(courseId) {
+  try {
+    return localStorage.getItem('repo_previewer_assignments_dirty_' + courseId) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function persistCourseAssignmentsState(courseId, data, markDirty = false) {
   const normalized = normalizeCourseAssignmentsData(courseId, data);
   state.courseAssignments = state.courseAssignments || {};
   state.courseAssignments[courseId] = normalized;
   try {
     localStorage.setItem('repo_previewer_assignments_' + courseId, JSON.stringify(normalized));
+    if (markDirty) {
+      localStorage.setItem('repo_previewer_assignments_dirty_' + courseId, '1');
+    }
   } catch (e) {}
   return normalized;
 }
 
-function populateAssignmentSelect(selectEl, taskList, activeId) {
+function findFirstEmptySlotNumber(taskList, afterNum = 0) {
+  const usedNums = new Set();
+  (taskList || []).forEach(t => {
+    const tup = getAssignmentSortTuple(t);
+    if (tup[0] <= 2 && Number.isFinite(tup[1])) {
+      usedNums.add(tup[1]);
+    }
+  });
+  for (let n = afterNum + 1; n <= MAX_ASSIGNMENT_SLOTS; n++) {
+    if (!usedNums.has(n)) return n;
+  }
+  for (let n = 1; n <= afterNum; n++) {
+    if (!usedNums.has(n)) return n;
+  }
+  let extra = MAX_ASSIGNMENT_SLOTS + 1;
+  while (usedNums.has(extra)) extra++;
+  return extra;
+}
+
+function populateAssignmentSelect(selectEl, taskList, activeId, includeAddAction = false) {
   if (!selectEl) return;
   selectEl.innerHTML = '';
   if (!taskList || taskList.length === 0) {
     const emptyOpt = document.createElement('option');
     emptyOpt.value = '';
     emptyOpt.disabled = true;
-    emptyOpt.selected = true;
-    emptyOpt.textContent = 'ยังไม่มีงาน (กด + เพิ่มงาน)';
+    emptyOpt.selected = !includeAddAction;
+    emptyOpt.textContent = 'ยังไม่มีงานในรายวิชา';
     selectEl.appendChild(emptyOpt);
-    selectEl.disabled = true;
-    return;
+    if (!includeAddAction) {
+      selectEl.disabled = true;
+      return;
+    }
   }
   selectEl.disabled = false;
-  taskList.forEach(task => {
+  (taskList || []).forEach(task => {
     const opt = document.createElement('option');
     opt.value = task.id;
     opt.textContent = task.title;
     if (task.id === activeId) opt.selected = true;
     selectEl.appendChild(opt);
   });
+  if (includeAddAction) {
+    const addOpt = document.createElement('option');
+    addOpt.value = '__add_slot__';
+    addOpt.textContent = '➕ เพิ่มงานใหม่ / ใส่ย้อนหลัง (งาน 1–40)...';
+    selectEl.appendChild(addOpt);
+  }
+}
+
+function populateModalSlotsSelect(selectEl, taskList, selectedVal) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+  selectEl.disabled = false;
+
+  const bySlot = new Map();
+  const extraTasks = [];
+  (taskList || []).forEach(task => {
+    const tup = getAssignmentSortTuple(task);
+    if (tup[0] <= 2 && Number.isFinite(tup[1]) && tup[1] >= 1 && tup[1] <= MAX_ASSIGNMENT_SLOTS) {
+      if (!bySlot.has(tup[1])) bySlot.set(tup[1], []);
+      bySlot.get(tup[1]).push(task);
+    } else {
+      extraTasks.push(task);
+    }
+  });
+
+  for (let n = 1; n <= MAX_ASSIGNMENT_SLOTS; n++) {
+    const matched = bySlot.get(n);
+    if (matched && matched.length > 0) {
+      matched.forEach(task => {
+        const opt = document.createElement('option');
+        opt.value = task.id;
+        const hasPrompt = Boolean(task.prompt && task.prompt.trim());
+        opt.textContent = `${hasPrompt ? '✓' : '●'} ${task.title}`;
+        if (opt.value === selectedVal) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+    } else {
+      const opt = document.createElement('option');
+      opt.value = `slot:${n}`;
+      opt.textContent = `➕ งานที่ ${n} (ยังไม่มีโจทย์ — เลือกเพื่อเพิ่ม)`;
+      if (opt.value === selectedVal) opt.selected = true;
+      selectEl.appendChild(opt);
+    }
+  }
+
+  extraTasks.forEach(task => {
+    const opt = document.createElement('option');
+    opt.value = task.id;
+    opt.textContent = `✓ ${task.title}`;
+    if (opt.value === selectedVal) opt.selected = true;
+    selectEl.appendChild(opt);
+  });
+}
+
+function updateModalSlotHint(selectedVal, isExistingTask) {
+  if (!elements.modalSlotModeHint) return;
+  if (selectedVal && selectedVal.startsWith('slot:')) {
+    const slotNum = selectedVal.slice(5);
+    elements.modalSlotModeHint.className = 'modal-slot-hint is-new';
+    elements.modalSlotModeHint.textContent = `✨ เพิ่มงานที่ ${slotNum} ย้อนหลัง/ใหม่ — วางโจทย์แล้วกดบันทึก (ระบบจะเรียงลำดับ 1–40 อัตโนมัติ)`;
+  } else if (isExistingTask) {
+    elements.modalSlotModeHint.className = 'modal-slot-hint';
+    elements.modalSlotModeHint.textContent = 'กำลังแก้ไขงานที่มีอยู่แล้ว (สามารถเลือกเปลี่ยนงาน 1–40 ได้จากรายการด้านบน)';
+  } else {
+    elements.modalSlotModeHint.className = 'modal-slot-hint';
+    elements.modalSlotModeHint.textContent = '';
+  }
 }
 
 async function fetchCourseAssignments(courseId) {
@@ -1041,7 +1158,14 @@ async function fetchCourseAssignments(courseId) {
     const res = await fetch(`/api/assignment/${encodeURIComponent(courseId)}`);
     if (res.ok) {
       const rawData = await res.json();
-      const data = persistCourseAssignmentsState(courseId, rawData);
+      const isDirtyLocal = isCourseAssignmentsDirty(courseId);
+
+      // ป้องกันกรณี Vercel Cold Start แล้วไฟล์ Seed ทับงาน 1-40 ที่ครูเพิ่ม/แก้ไข/ลบไว้
+      if (rawData.is_seed && isDirtyLocal && state.courseAssignments && state.courseAssignments[courseId]) {
+        return;
+      }
+
+      const data = persistCourseAssignmentsState(courseId, rawData, false);
       const course = state.courses.find(c => c.id === courseId);
       if (course && data.title) {
         course.assignment = data.title;
@@ -1124,9 +1248,9 @@ function renderAssignmentPickers() {
     elements.assignmentPickerGroup.style.display = isPythonOrHasTasks ? 'inline-flex' : 'none';
   }
 
-  populateAssignmentSelect(elements.assignmentPickerSelect, taskList, activeId);
-  populateAssignmentSelect(elements.modalAssignmentTaskSelect, taskList, activeId);
-  populateAssignmentSelect(elements.modalImportAssignmentSelect, taskList, activeId);
+  populateAssignmentSelect(elements.assignmentPickerSelect, taskList, activeId, true);
+  populateModalSlotsSelect(elements.modalAssignmentTaskSelect, taskList, activeId || `slot:${findFirstEmptySlotNumber(taskList)}`);
+  populateAssignmentSelect(elements.modalImportAssignmentSelect, taskList, activeId, true);
 
   if (elements.btnModalDeleteAssignment) {
     elements.btnModalDeleteAssignment.disabled = taskList.length === 0;
@@ -1135,7 +1259,8 @@ function renderAssignmentPickers() {
     elements.btnModalEditAssignment.disabled = taskList.length === 0;
   }
   if (elements.btnDeleteAssignment) {
-    elements.btnDeleteAssignment.disabled = taskList.length === 0;
+    const modalVal = elements.modalAssignmentTaskSelect ? elements.modalAssignmentTaskSelect.value : activeId;
+    elements.btnDeleteAssignment.disabled = !modalVal || modalVal.startsWith('slot:');
   }
 
   if (elements.modalPromptPreviewTaskTitle) {
@@ -1163,7 +1288,7 @@ async function handleSwitchAssignmentTask(taskId) {
   courseData.max_score = targetTask.max_score || 10;
   course.assignment = targetTask.title;
 
-  persistCourseAssignmentsState(course.id, courseData);
+  persistCourseAssignmentsState(course.id, courseData, true);
 
   // Reset student assignment evaluation if for a previous task
   state.students.forEach(s => {
@@ -1181,6 +1306,7 @@ async function handleSwitchAssignmentTask(taskId) {
   showToast(`สลับโจทย์เป็น: ${targetTask.title}`, 'info');
 
   try {
+    const isDirtyLocal = isCourseAssignmentsDirty(course.id);
     await fetch(`/api/assignment/${encodeURIComponent(course.id)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1189,6 +1315,7 @@ async function handleSwitchAssignmentTask(taskId) {
         title: targetTask.title,
         prompt: targetTask.prompt,
         max_score: targetTask.max_score || 10,
+        client_assignments: isDirtyLocal ? (courseData.assignments || []) : undefined,
       }),
     });
   } catch (e) {
@@ -1196,7 +1323,7 @@ async function handleSwitchAssignmentTask(taskId) {
   }
 }
 
-async function openAssignmentModal() {
+async function openAssignmentModal(preselectMode = null) {
   const course = getActiveCourse();
   if (elements.modalAssignmentCourseLabel && course) {
     elements.modalAssignmentCourseLabel.textContent = `วิชา: ${course.subject}`;
@@ -1211,35 +1338,58 @@ async function openAssignmentModal() {
 
   const courseData = state.courseAssignments && state.courseAssignments[course.id];
   const taskList = (courseData && Array.isArray(courseData.assignments)) ? sortAssignmentsList(courseData.assignments) : [];
-  const activeId = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || '';
-  const task = taskList.find(t => t.id === activeId) || taskList[0] || null;
+  let targetVal = (courseData && courseData.active_assignment_id) || (taskList[0] && taskList[0].id) || '';
 
-  if (elements.modalAssignmentTaskSelect && activeId) {
-    elements.modalAssignmentTaskSelect.value = activeId;
+  if (preselectMode === '__first_empty__') {
+    targetVal = `slot:${findFirstEmptySlotNumber(taskList)}`;
+  } else if (typeof preselectMode === 'number') {
+    targetVal = `slot:${preselectMode}`;
+  } else if (!targetVal) {
+    targetVal = `slot:${findFirstEmptySlotNumber(taskList)}`;
   }
-  if (elements.assignmentTitleInput) {
-    elements.assignmentTitleInput.value = task ? (task.title || '') : '';
+
+  if (elements.modalAssignmentTaskSelect) {
+    elements.modalAssignmentTaskSelect.value = targetVal;
   }
-  if (elements.assignmentPromptTextarea) {
-    elements.assignmentPromptTextarea.value = task ? (task.prompt || '') : '';
+  handleModalTaskSelectChange(targetVal);
+
+  if (preselectMode === '__first_empty__' || typeof preselectMode === 'number') {
+    if (elements.assignmentTitleInput) {
+      elements.assignmentTitleInput.focus();
+      elements.assignmentTitleInput.setSelectionRange(
+        elements.assignmentTitleInput.value.length,
+        elements.assignmentTitleInput.value.length
+      );
+    }
   }
 
   // ตรวจสอบสถานะ API Key
   checkGeminiKeyStatus();
 }
 
-function handleModalTaskSelectChange(taskId) {
+function handleModalTaskSelectChange(selectedVal) {
   const course = getActiveCourse();
   if (!course) return;
+
+  if (selectedVal && selectedVal.startsWith('slot:')) {
+    const slotNum = parseInt(selectedVal.slice(5), 10) || 1;
+    if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = `งานที่ ${slotNum} `;
+    if (elements.assignmentPromptTextarea) elements.assignmentPromptTextarea.value = '';
+    if (elements.btnDeleteAssignment) elements.btnDeleteAssignment.disabled = true;
+    updateModalSlotHint(selectedVal, false);
+    return;
+  }
+
   const courseData = state.courseAssignments && state.courseAssignments[course.id];
-  if (!courseData) return;
-  const targetTask = (courseData.assignments || []).find(t => t.id === taskId);
+  const targetTask = (courseData && courseData.assignments ? courseData.assignments : []).find(t => t.id === selectedVal);
   if (targetTask) {
     if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = targetTask.title || '';
     if (elements.assignmentPromptTextarea) elements.assignmentPromptTextarea.value = targetTask.prompt || '';
-  }
-  if (elements.btnDeleteAssignment) {
-    elements.btnDeleteAssignment.disabled = !taskId;
+    if (elements.btnDeleteAssignment) elements.btnDeleteAssignment.disabled = false;
+    updateModalSlotHint(selectedVal, true);
+  } else {
+    if (elements.btnDeleteAssignment) elements.btnDeleteAssignment.disabled = true;
+    updateModalSlotHint(selectedVal, false);
   }
 }
 
@@ -1247,52 +1397,35 @@ function handleAddNewAssignmentTask() {
   const course = getActiveCourse();
   if (!course) return;
   const courseData = state.courseAssignments && state.courseAssignments[course.id];
-  const existingList = (courseData && Array.isArray(courseData.assignments)) ? courseData.assignments : [];
-  const existingIds = new Set(existingList.map(t => t.id));
+  const existingList = (courseData && Array.isArray(courseData.assignments)) ? sortAssignmentsList(courseData.assignments) : [];
 
-  let maxNum = 0;
-  existingList.forEach(t => {
-    const tup = getAssignmentSortTuple(t);
-    if (tup[0] <= 2 && Number.isFinite(tup[1]) && tup[1] > maxNum) {
-      maxNum = tup[1];
-    }
-  });
-  let nextNum = maxNum + 1;
-  let newId = `work-${nextNum}`;
-  while (existingIds.has(newId)) {
-    nextNum += 1;
-    newId = `work-${nextNum}`;
-  }
-
-  const defaultTitle = `งานที่ ${nextNum} โจทย์ใหม่`;
-
-  if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = defaultTitle;
-  if (elements.assignmentPromptTextarea) {
-    elements.assignmentPromptTextarea.value = `คำชี้แจง ให้นักเรียนพัฒนาโปรแกรมภาษา Python ตามข้อกำหนดต่อไปนี้:\n\nข้อกำหนดของโปรแกรม\n• สร้างคลาสชื่อ ...\n• กำหนด Property ได้แก่ ...\n• สร้าง Method ชื่อ ...\n• สร้าง Object อย่างน้อย 2 รายการ\n• แสดงผลการทำงานให้ถูกต้อง`;
-  }
+  const curVal = elements.modalAssignmentTaskSelect ? elements.modalAssignmentTaskSelect.value : '';
+  const afterNum = (curVal && curVal.startsWith('slot:')) ? (parseInt(curVal.slice(5), 10) || 0) : 0;
+  const nextNum = findFirstEmptySlotNumber(existingList, afterNum);
+  const slotVal = `slot:${nextNum}`;
 
   if (elements.modalAssignmentTaskSelect) {
-    elements.modalAssignmentTaskSelect.disabled = false;
-    // ลบ option ว่าง (กรณีเพิ่งลบงานจนหมด) ก่อนเพิ่มงานใหม่
-    Array.from(elements.modalAssignmentTaskSelect.options).forEach(o => {
-      if (!o.value) o.remove();
-    });
-    const opt = document.createElement('option');
-    opt.value = newId;
-    opt.textContent = `+ ${defaultTitle}`;
-    opt.selected = true;
-    elements.modalAssignmentTaskSelect.appendChild(opt);
+    let opt = Array.from(elements.modalAssignmentTaskSelect.options).find(o => o.value === slotVal);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = slotVal;
+      opt.textContent = `➕ งานที่ ${nextNum} (ยังไม่มีโจทย์ — เลือกเพื่อเพิ่ม)`;
+      elements.modalAssignmentTaskSelect.appendChild(opt);
+    }
+    elements.modalAssignmentTaskSelect.value = slotVal;
   }
-  if (elements.btnDeleteAssignment) {
-    elements.btnDeleteAssignment.disabled = false;
-  }
+
+  handleModalTaskSelectChange(slotVal);
 
   if (elements.assignmentTitleInput) {
     elements.assignmentTitleInput.focus();
-    elements.assignmentTitleInput.select();
+    elements.assignmentTitleInput.setSelectionRange(
+      elements.assignmentTitleInput.value.length,
+      elements.assignmentTitleInput.value.length
+    );
   }
 
-  showToast(`กรอกข้อความโจทย์สำหรับ ${defaultTitle} แล้วกดบันทึก`, 'info');
+  showToast(`เลือกงานที่ ${nextNum} แล้ว — ตั้งชื่องานและวางโจทย์ได้เลย`, 'info');
 }
 
 async function handleDeleteAssignmentTask(taskId = null, targetCourseId = null, keepModalOpen = false) {
@@ -1315,20 +1448,14 @@ async function handleDeleteAssignmentTask(taskId = null, targetCourseId = null, 
     }
   }
 
-  if (!targetId) {
-    showToast('ไม่มีชิ้นงานให้ลบ', 'warning');
+  if (!targetId || targetId.startsWith('slot:')) {
+    showToast('งานนี้ยังไม่ได้บันทึกไว้ (ไม่มีข้อมูลให้ลบ)', 'info');
     return;
   }
 
   const targetTask = existingList.find(t => t.id === targetId);
-
-  // หากเป็นงานที่เพิ่งกด "+ เพิ่มงานใหม่" และยังไม่ได้กดบันทึก ให้ยกเลิก Draft ทันที
   if (!targetTask) {
     renderAssignmentPickers();
-    const fallbackTask = existingList[0] || null;
-    if (elements.assignmentTitleInput) elements.assignmentTitleInput.value = fallbackTask ? (fallbackTask.title || '') : '';
-    if (elements.assignmentPromptTextarea) elements.assignmentPromptTextarea.value = fallbackTask ? (fallbackTask.prompt || '') : '';
-    showToast('ยกเลิกการสร้างงานใหม่แล้ว', 'info');
     return;
   }
 
@@ -1344,7 +1471,7 @@ async function handleDeleteAssignmentTask(taskId = null, targetCourseId = null, 
       return;
     }
 
-    const updated = persistCourseAssignmentsState(course.id, await res.json());
+    const updated = persistCourseAssignmentsState(course.id, await res.json(), true);
     course.assignment = updated.title || 'ยังไม่มีชิ้นงาน';
 
     state.students.forEach(s => {
@@ -1361,17 +1488,11 @@ async function handleDeleteAssignmentTask(taskId = null, targetCourseId = null, 
 
     if (keepModalOpen) {
       const nextList = updated.assignments || [];
-      const nextActiveId = updated.active_assignment_id || (nextList[0] && nextList[0].id) || '';
-      const nextTask = nextList.find(t => t.id === nextActiveId) || null;
-      if (elements.modalAssignmentTaskSelect && nextActiveId) {
-        elements.modalAssignmentTaskSelect.value = nextActiveId;
+      const nextVal = updated.active_assignment_id || (nextList[0] && nextList[0].id) || `slot:${findFirstEmptySlotNumber(nextList)}`;
+      if (elements.modalAssignmentTaskSelect) {
+        elements.modalAssignmentTaskSelect.value = nextVal;
       }
-      if (elements.assignmentTitleInput) {
-        elements.assignmentTitleInput.value = nextTask ? (nextTask.title || '') : '';
-      }
-      if (elements.assignmentPromptTextarea) {
-        elements.assignmentPromptTextarea.value = nextTask ? (nextTask.prompt || '') : '';
-      }
+      handleModalTaskSelectChange(nextVal);
     }
 
     showToast(`🗑️ ลบ "${targetTask.title}" เรียบร้อยแล้ว`, 'info');
@@ -1455,9 +1576,29 @@ async function handleSaveGeminiKey() {
 
 async function handleSaveAssignment() {
   const course = getActiveCourse();
-  const selectedTaskId = elements.modalAssignmentTaskSelect ? elements.modalAssignmentTaskSelect.value : null;
-  const title = elements.assignmentTitleInput ? elements.assignmentTitleInput.value.trim() : '';
+  const rawSelectedVal = elements.modalAssignmentTaskSelect ? elements.modalAssignmentTaskSelect.value : null;
+  const courseData = state.courseAssignments && state.courseAssignments[course.id];
+  const existingList = (courseData && Array.isArray(courseData.assignments)) ? courseData.assignments : [];
+
+  let selectedTaskId = rawSelectedVal;
+  let fallbackNum = null;
+  if (rawSelectedVal && rawSelectedVal.startsWith('slot:')) {
+    fallbackNum = parseInt(rawSelectedVal.slice(5), 10) || 1;
+    const existingIds = new Set(existingList.map(t => t.id));
+    let candidateId = `work-${fallbackNum}`;
+    let suffix = 1;
+    while (existingIds.has(candidateId)) {
+      candidateId = `work-${fallbackNum}-${suffix++}`;
+    }
+    selectedTaskId = candidateId;
+  }
+
+  let title = elements.assignmentTitleInput ? elements.assignmentTitleInput.value.trim() : '';
+  if (!title) {
+    title = fallbackNum ? `งานที่ ${fallbackNum}` : 'โจทย์ประจำงาน';
+  }
   const prompt = elements.assignmentPromptTextarea ? elements.assignmentPromptTextarea.value.trim() : '';
+  const isDirtyLocal = isCourseAssignmentsDirty(course.id);
 
   try {
     const res = await fetch(`/api/assignment/${encodeURIComponent(course.id)}`, {
@@ -1465,20 +1606,21 @@ async function handleSaveAssignment() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: selectedTaskId || undefined,
-        title: title || 'โจทย์ประจำงาน',
+        title: title,
         prompt: prompt,
         max_score: 10,
+        client_assignments: isDirtyLocal ? existingList : undefined,
       }),
     });
     if (res.ok) {
-      const updated = persistCourseAssignmentsState(course.id, await res.json());
+      const updated = persistCourseAssignmentsState(course.id, await res.json(), true);
       course.assignment = updated.title || title;
       renderCourseSelect();
       renderCourseHub();
       renderAssignmentPickers();
       renderStudioPromptPane(getCurrentStudent());
       closeAssignmentModal();
-      showToast('✓ บันทึกโจทย์และเกณฑ์ตรวจประจำงานเรียบร้อยแล้ว', 'success');
+      showToast(`✓ บันทึก "${title}" เรียบร้อยแล้ว`, 'success');
     } else {
       showToast('ไม่สามารถบันทึกโจทย์ได้', 'error');
     }

@@ -204,6 +204,8 @@ def get_assignment(course_id: str) -> dict:
     course_data = assignments.get(course_id, {})
     task_list = _resolve_course_task_list(course_id, course_data)
 
+    is_seed = (not ASSIGNMENTS_FILE.exists()) or ("assignments" not in course_data)
+
     if not task_list:
         return {
             "course_id": course_id,
@@ -213,6 +215,7 @@ def get_assignment(course_id: str) -> dict:
             "max_score": 10,
             "active_assignment_id": "",
             "assignments": [],
+            "is_seed": is_seed,
         }
 
     default_active = "work-4" if ("python" in course_id.lower() or "oop" in course_id.lower()) else task_list[0].get("id", "task-1")
@@ -228,15 +231,31 @@ def get_assignment(course_id: str) -> dict:
         "max_score": active_task.get("max_score", 10),
         "active_assignment_id": resolved_active_id,
         "assignments": task_list,
+        "is_seed": is_seed,
     }
 
 
 def save_assignment(course_id: str, assignment_data: dict) -> dict:
     """บันทึกหรืออัปเดตโจทย์และเกณฑ์ตรวจประจำวิชา พร้อมจัดเรียงลำดับตามเลขงาน"""
     with _lock:
+        had_persisted_file = ASSIGNMENTS_FILE.exists()
         data = load_all_assignments()
         current_course = dict(data.get(course_id, {}))
-        existing_list = _resolve_course_task_list(course_id, current_course)
+
+        client_list = assignment_data.get("client_assignments")
+        if not had_persisted_file and isinstance(client_list, list):
+            existing_list = [
+                {
+                    "id": str(t.get("id") or "").strip(),
+                    "title": str(t.get("title") or "").strip() or "โจทย์ประจำงาน",
+                    "prompt": str(t.get("prompt") or "").strip(),
+                    "max_score": t.get("max_score", 10),
+                }
+                for t in client_list
+                if isinstance(t, dict) and str(t.get("id") or "").strip()
+            ]
+        else:
+            existing_list = _resolve_course_task_list(course_id, current_course)
 
         target_id = (assignment_data.get("id") or "").strip() or current_course.get("active_assignment_id") or "work-1"
         title = (assignment_data.get("title") or "").strip() or "โจทย์ประจำงาน"
