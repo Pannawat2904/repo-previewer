@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261117-clean1">
+  <link rel="stylesheet" href="/static/app.css?v=20261117-clean2">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -114,7 +114,7 @@
             <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
             <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
           </svg>
-          <span>เลือกวิชา</span>
+          <span>หน้าแรก</span>
         </button>
 
         <button id="btnOpenAssignmentModal" class="btn btn-secondary" title="ตั้งค่าโจทย์และเกณฑ์ตรวจประจำงาน (Assignment & Rubric)">
@@ -125,14 +125,14 @@
             <line x1="16" y1="17" x2="8" y2="17"></line>
             <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
-          <span>โจทย์ & เกณฑ์ตรวจ</span>
+          <span>ตั้งค่าโจทย์</span>
         </button>
 
         <button id="btnOpenInputModal" class="btn btn-primary" title="นำเข้าลิงก์ GitHub หรืออัปโหลดไฟล์งานนักเรียน (.py, .ipynb, .zip, .html)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <path d="M12 5v14M5 12h14"></path>
           </svg>
-          <span>นำเข้างานตรวจ</span>
+          <span>นำเข้างาน</span>
         </button>
 
         <div class="header-menu-group">
@@ -497,20 +497,22 @@
           <div class="modal-assignment-row">
             <div class="modal-assignment-field">
               <label for="modalImportAssignmentSelect" class="modal-assignment-label">
-                <span class="icon">📋</span>
-                <strong>เลือกงานที่จะนำเข้าตรวจ:</strong>
+                <span>งานที่ตรวจ</span>
               </label>
-              <select id="modalImportAssignmentSelect" class="form-input modal-assignment-select" title="เลือกงานที่ต้องการตรวจ"></select>
+              <div class="hub-select-wrapper" style="flex:1;">
+                <select id="modalImportAssignmentSelect" class="hub-assignment-select modal-assignment-select" title="เลือกงานที่ต้องการตรวจ"></select>
+                <svg class="hub-select-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
             </div>
             <div class="modal-assignment-btn-actions">
-              <button type="button" id="btnModalAddAssignment" class="btn btn-secondary btn-sm" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงานใหม่</button>
-              <button type="button" id="btnModalEditAssignment" class="btn btn-outline btn-sm" title="ดูหรือแก้ไขข้อความโจทย์ของงานนี้">✏️ แก้โจทย์</button>
+              <button type="button" id="btnModalEditAssignment" class="btn btn-secondary btn-sm" title="ดูหรือแก้ไขข้อความโจทย์ของงานนี้">✏️ แก้โจทย์</button>
+              <button type="button" id="btnModalAddAssignment" class="btn btn-outline btn-sm" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงาน</button>
             </div>
           </div>
           <!-- Collapsible Prompt Preview -->
           <div id="modalPromptPreviewBox" class="modal-prompt-preview-box">
             <div class="prompt-preview-top">
-              <span class="prompt-pill-mini">🎯 ข้อกำหนดโจทย์</span>
+              <span class="prompt-pill-mini">🎯 โจทย์</span>
               <span id="modalPromptPreviewTaskTitle" class="prompt-preview-task-title">ชื่องาน</span>
             </div>
             <div id="modalPromptPreviewSnippet" class="prompt-preview-snippet"></div>
@@ -598,7 +600,7 @@ https://github.com/patvikan24-oss/my-profil-013
 
   <!-- Assignment Settings & AI Rubric Modal -->
   <div id="assignmentModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content modal-content-lg">
+    <div class="modal-card modal-content-lg">
       <div class="modal-header">
         <div class="modal-header-icon-title">
           <span class="modal-title-icon">🎯</span>
@@ -614,8 +616,11 @@ https://github.com/patvikan24-oss/my-profil-013
           <label class="form-label" for="modalAssignmentTaskSelect">
             <strong>เลือกชิ้นงานที่ต้องการตั้งค่า / ตรวจ:</strong>
           </label>
-          <div style="display:flex; gap:10px;">
-            <select id="modalAssignmentTaskSelect" class="form-input" style="flex:1; font-weight:600;"></select>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div class="hub-select-wrapper" style="flex:1;">
+              <select id="modalAssignmentTaskSelect" class="hub-assignment-select"></select>
+              <svg class="hub-select-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
             <button type="button" id="btnAddNewAssignment" class="btn btn-secondary btn-sm" title="สร้างงานใหม่สำหรับการบ้านอื่น">+ เพิ่มงานใหม่</button>
           </div>
         </div>
@@ -714,6 +719,6 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261117-clean1"></script>
+  <script src="/static/app.js?v=20261117-clean2"></script>
 </body>
 </html>
