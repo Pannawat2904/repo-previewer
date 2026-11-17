@@ -216,6 +216,7 @@ class AssignmentGradeRequest(BaseModel):
 
 class GeminiKeyRequest(BaseModel):
     api_key: str
+    skip_test: Optional[bool] = False
 
 
 # -------------------------------------------------------------
@@ -465,25 +466,34 @@ async def api_delete_assignment(course_id: str, assignment_id: str):
 
 @app.get("/api/settings/gemini-key")
 async def api_get_gemini_key_status():
-    """ตรวจสอบสถานะ Gemini API Key"""
+    """ตรวจสอบสถานะ Gemini API Key กลางของระบบ"""
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
     key = resolve_gemini_api_key()
     if not key:
-        return {"configured": False, "masked": ""}
+        return {"configured": False, "masked": "", "source": ""}
     masked = key[:6] + "..." + key[-4:] if len(key) >= 12 else "AIza...****"
-    return {"configured": True, "masked": masked}
+    source = "env" if (env_key and key == env_key) else "config"
+    return {"configured": True, "masked": masked, "source": source}
 
 
 @app.post("/api/settings/gemini-key")
 async def api_save_gemini_key(req: GeminiKeyRequest):
-    """บันทึกและตรวจสอบ Gemini API Key"""
+    """บันทึกและตรวจสอบ Gemini API Key กลางของทั้งระบบ"""
     clean_key = req.api_key.strip()
     if not clean_key:
         save_config({"gemini_api_key": ""})
-        return {"status": "cleared", "message": "ลบ API Key เรียบร้อยแล้ว"}
+        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if env_key:
+            masked_env = env_key[:6] + "..." + env_key[-4:] if len(env_key) >= 12 else "AIza...****"
+            return {"status": "cleared", "message": "ล้างคีย์ที่กรอกไว้แล้ว (ใช้คีย์หลักจากเซิร์ฟเวอร์แทน)", "masked": masked_env}
+        return {"status": "cleared", "message": "ลบ API Key เรียบร้อยแล้ว", "masked": ""}
 
-    # บันทึกคีย์ไว้ก่อนเสมอ
+    # บันทึกคีย์กลางไว้เสมอ
     save_config({"gemini_api_key": clean_key})
     masked = clean_key[:6] + "..." + clean_key[-4:] if len(clean_key) >= 12 else "AIza...****"
+
+    if req.skip_test:
+        return {"status": "ok", "message": "ซิงก์ Gemini API Key กลางสำเร็จ", "masked": masked}
 
     test_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
     payload = {

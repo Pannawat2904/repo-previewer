@@ -4839,8 +4839,117 @@ select.form-input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
   font-size: 0.8rem;
+}
+
+.ai-key-msg-row {
+  margin-top: 8px;
+  min-height: 20px;
+}
+
+.ai-key-system-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 10px;
+  padding: 11px 14px;
+  margin-top: 14px;
+}
+
+.ai-key-system-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ai-system-icon {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.ai-key-system-info strong {
+  display: block;
+  font-size: 0.86rem;
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.ai-key-system-sub {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.ai-key-system-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hub-global-ai-bar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px auto 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hub-global-ai-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hub-ai-icon {
+  font-size: 0.95rem;
+}
+
+.hub-ai-label {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.menu-btn-ai {
+  position: relative;
+  padding: 6px 9px;
+}
+
+.header-ai-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+  display: inline-block;
+  flex-shrink: 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.header-ai-dot.is-connected {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+}
+
+.modal-overlay-top {
+  z-index: 1200;
 }
 
 .link-external {

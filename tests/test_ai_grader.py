@@ -1,9 +1,10 @@
+import os
 import unittest
 import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import patch
-from previewer.ai_grader import evaluate_with_ast_fallback, parse_prompt_specs
+from previewer.ai_grader import evaluate_with_ast_fallback, parse_prompt_specs, resolve_gemini_api_key
 import previewer.storage as storage
 from previewer.storage import (
     DEFAULT_ASSIGNMENT_PROMPT,
@@ -17,9 +18,12 @@ class TestAiGrader(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.mkdtemp()
         self.patcher = patch.object(storage, 'ASSIGNMENTS_FILE', Path(self.tmp_dir) / 'assignments.json')
+        self.config_patcher = patch.object(storage, 'CONFIG_FILE', Path(self.tmp_dir) / 'config.json')
         self.patcher.start()
+        self.config_patcher.start()
 
     def tearDown(self):
+        self.config_patcher.stop()
         self.patcher.stop()
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
@@ -273,6 +277,44 @@ class Product
             [t["id"] for t in body["assignments"]],
             ["work-1", "work-2", "work-4", "work-40"],
         )
+
+    def test_global_gemini_key_shared_across_assignments(self):
+        from fastapi.testclient import TestClient
+        import app as main_app
+
+        client = TestClient(main_app.app)
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            status_empty = client.get("/api/settings/gemini-key")
+            self.assertEqual(status_empty.status_code, 200)
+            self.assertFalse(status_empty.json()["configured"])
+            self.assertEqual(status_empty.json()["source"], "")
+
+            save_resp = client.post(
+                "/api/settings/gemini-key",
+                json={"api_key": "AIzaSyTestGlobal123456", "skip_test": True},
+            )
+            self.assertEqual(save_resp.status_code, 200)
+            self.assertEqual(save_resp.json()["status"], "ok")
+            self.assertEqual(save_resp.json()["masked"], "AIzaSy...3456")
+
+            status_cfg = client.get("/api/settings/gemini-key")
+            self.assertEqual(status_cfg.status_code, 200)
+            self.assertTrue(status_cfg.json()["configured"])
+            self.assertEqual(status_cfg.json()["source"], "config")
+            self.assertEqual(resolve_gemini_api_key(), "AIzaSyTestGlobal123456")
+
+            clear_resp = client.post(
+                "/api/settings/gemini-key",
+                json={"api_key": "", "skip_test": True},
+            )
+            self.assertEqual(clear_resp.status_code, 200)
+            self.assertEqual(clear_resp.json()["status"], "cleared")
+            self.assertFalse(client.get("/api/settings/gemini-key").json()["configured"])
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyEnvKey999888"}, clear=False):
+            status_env = client.get("/api/settings/gemini-key").json()
+            self.assertTrue(status_env["configured"])
+            self.assertEqual(status_env["source"], "env")
 
 
 if __name__ == "__main__":

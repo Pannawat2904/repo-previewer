@@ -150,8 +150,18 @@ const elements = {
   btnClearPrompt: document.getElementById('btnClearPrompt'),
   geminiApiKeyInput: document.getElementById('geminiApiKeyInput'),
   btnSaveGeminiKey: document.getElementById('btnSaveGeminiKey'),
+  btnClearGeminiKey: document.getElementById('btnClearGeminiKey'),
   geminiKeyStatusBadge: document.getElementById('geminiKeyStatusBadge'),
+  hubGeminiKeyStatusBadge: document.getElementById('hubGeminiKeyStatusBadge'),
+  aiModalKeyStatusBadge: document.getElementById('aiModalKeyStatusBadge'),
   geminiKeyMessage: document.getElementById('geminiKeyMessage'),
+  btnOpenAiSettings: document.getElementById('btnOpenAiSettings'),
+  headerAiKeyDot: document.getElementById('headerAiKeyDot'),
+  btnHubAiSettings: document.getElementById('btnHubAiSettings'),
+  btnOpenAiSettingsFromAssignment: document.getElementById('btnOpenAiSettingsFromAssignment'),
+  aiSettingsModal: document.getElementById('aiSettingsModal'),
+  btnCloseAiSettingsModal: document.getElementById('btnCloseAiSettingsModal'),
+  btnDoneAiSettingsModal: document.getElementById('btnDoneAiSettingsModal'),
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
   btnDeleteAssignment: document.getElementById('btnDeleteAssignment'),
@@ -307,6 +317,9 @@ async function initCoursesState() {
   for (const c of state.courses) {
     fetchCourseAssignments(c.id);
   }
+
+  // ตรวจสอบ/ซิงก์ Gemini API Key กลางทั้งระบบตั้งแต่เปิดหน้าแรก
+  checkGeminiKeyStatus();
 }
 
 function getActiveCourse() {
@@ -740,6 +753,32 @@ function setupEventListeners() {
   }
   if (elements.btnSaveGeminiKey) {
     elements.btnSaveGeminiKey.addEventListener('click', handleSaveGeminiKey);
+  }
+  if (elements.btnClearGeminiKey) {
+    elements.btnClearGeminiKey.addEventListener('click', handleClearGeminiKey);
+  }
+  if (elements.geminiApiKeyInput) {
+    elements.geminiApiKeyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveGeminiKey();
+      }
+    });
+  }
+  [
+    elements.btnOpenAiSettings,
+    elements.btnHubAiSettings,
+    elements.btnOpenAiSettingsFromAssignment,
+  ].forEach(btn => {
+    if (btn) btn.addEventListener('click', openAiSettingsModal);
+  });
+  [elements.btnCloseAiSettingsModal, elements.btnDoneAiSettingsModal].forEach(btn => {
+    if (btn) btn.addEventListener('click', closeAiSettingsModal);
+  });
+  if (elements.aiSettingsModal) {
+    elements.aiSettingsModal.addEventListener('click', (e) => {
+      if (e.target === elements.aiSettingsModal) closeAiSettingsModal();
+    });
   }
   if (elements.assignmentGradeBadge) {
     elements.assignmentGradeBadge.addEventListener('click', handleGradeBadgeClick);
@@ -1520,22 +1559,121 @@ function loadExampleProductPrompt() {
   showToast('โหลดโจทย์ตัวอย่าง: งานที่ 4 โปรแกรมจัดการข้อมูลสินค้า แล้ว', 'success');
 }
 
+const GLOBAL_GEMINI_KEY_STORAGE = 'repo_previewer_gemini_api_key';
+
+function getSavedGlobalGeminiKey() {
+  try {
+    return (localStorage.getItem(GLOBAL_GEMINI_KEY_STORAGE) || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+function saveGlobalGeminiKeyLocal(apiKey) {
+  try {
+    const clean = String(apiKey || '').trim();
+    if (clean) {
+      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, clean);
+    } else {
+      localStorage.removeItem(GLOBAL_GEMINI_KEY_STORAGE);
+    }
+  } catch (e) {}
+}
+
+function maskGeminiApiKey(key) {
+  const clean = String(key || '').trim();
+  if (!clean) return '';
+  return clean.length >= 12 ? `${clean.slice(0, 6)}...${clean.slice(-4)}` : 'AIza...****';
+}
+
+function applyGeminiKeyStatusUI({ configured, masked, source }) {
+  const badges = [
+    elements.geminiKeyStatusBadge,
+    elements.hubGeminiKeyStatusBadge,
+    elements.aiModalKeyStatusBadge,
+  ];
+  const label = configured
+    ? (source === 'env'
+      ? `✓ เชื่อมต่อแล้ว (${masked} · คีย์หลักระบบ)`
+      : `✓ เชื่อมต่อแล้ว (${masked} · ใช้ร่วมกันทั้งระบบ)`)
+    : 'ยังไม่ได้ตั้งค่า (ใช้ AST ตรวจโครงสร้างแทน)';
+
+  badges.forEach(badge => {
+    if (!badge) return;
+    badge.className = configured ? 'badge badge-success' : 'badge badge-subtle';
+    badge.textContent = label;
+  });
+
+  if (elements.headerAiKeyDot) {
+    elements.headerAiKeyDot.classList.toggle('is-connected', Boolean(configured));
+  }
+
+  if (elements.btnClearGeminiKey) {
+    const hasClientOrConfigKey = Boolean(getSavedGlobalGeminiKey()) || source === 'config';
+    elements.btnClearGeminiKey.disabled = !hasClientOrConfigKey;
+  }
+}
+
+function openAiSettingsModal() {
+  if (elements.geminiKeyMessage) {
+    elements.geminiKeyMessage.className = 'key-status-msg';
+    elements.geminiKeyMessage.textContent = '';
+  }
+  if (elements.aiSettingsModal) {
+    elements.aiSettingsModal.style.display = 'flex';
+  }
+  checkGeminiKeyStatus();
+  if (elements.geminiApiKeyInput) {
+    setTimeout(() => elements.geminiApiKeyInput.focus(), 60);
+  }
+}
+
+function closeAiSettingsModal() {
+  if (elements.aiSettingsModal) {
+    elements.aiSettingsModal.style.display = 'none';
+  }
+}
+
 async function checkGeminiKeyStatus() {
-  if (!elements.geminiKeyStatusBadge) return;
+  const localKey = getSavedGlobalGeminiKey();
+  if (localKey) {
+    applyGeminiKeyStatusUI({
+      configured: true,
+      masked: maskGeminiApiKey(localKey),
+      source: 'local',
+    });
+  }
   try {
     const res = await fetch('/api/settings/gemini-key');
     if (res.ok) {
       const data = await res.json();
-      if (data.configured) {
-        elements.geminiKeyStatusBadge.className = 'badge badge-success';
-        elements.geminiKeyStatusBadge.textContent = `✓ เชื่อมต่อแล้ว (${data.masked})`;
+      if (localKey) {
+        // ซิงก์คีย์กลางจากเบราว์เซอร์ไปยังเซิร์ฟเวอร์อัตโนมัติหากเซิร์ฟเวอร์เริ่มใหม่ (เช่น Vercel Cold Start)
+        if (!data.configured) {
+          fetch('/api/settings/gemini-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: localKey, skip_test: true }),
+          }).catch(() => {});
+        }
+        applyGeminiKeyStatusUI({
+          configured: true,
+          masked: maskGeminiApiKey(localKey),
+          source: 'local',
+        });
       } else {
-        elements.geminiKeyStatusBadge.className = 'badge badge-subtle';
-        elements.geminiKeyStatusBadge.textContent = 'ยังไม่ได้ตั้งค่า (ใช้ AST ตรวจโครงสร้างแทน)';
+        applyGeminiKeyStatusUI(data);
       }
+    } else if (!localKey) {
+      applyGeminiKeyStatusUI({ configured: false, masked: '', source: '' });
     }
   } catch (e) {
-    elements.geminiKeyStatusBadge.textContent = 'ไม่สามารถตรวจสอบได้';
+    if (!localKey) {
+      [elements.geminiKeyStatusBadge, elements.hubGeminiKeyStatusBadge, elements.aiModalKeyStatusBadge]
+        .forEach(badge => {
+          if (badge) badge.textContent = 'ไม่สามารถตรวจสอบได้';
+        });
+    }
   }
 }
 
@@ -1543,11 +1681,19 @@ async function handleSaveGeminiKey() {
   const key = elements.geminiApiKeyInput ? elements.geminiApiKeyInput.value.trim() : '';
   if (!key) {
     showToast('กรุณาระบุ Gemini API Key', 'warning');
+    if (elements.geminiApiKeyInput) elements.geminiApiKeyInput.focus();
     return;
   }
+  saveGlobalGeminiKeyLocal(key);
+  applyGeminiKeyStatusUI({
+    configured: true,
+    masked: maskGeminiApiKey(key),
+    source: 'local',
+  });
+
   if (elements.geminiKeyMessage) {
     elements.geminiKeyMessage.className = 'key-status-msg';
-    elements.geminiKeyMessage.textContent = 'กำลังบันทึกและตรวจสอบ API Key...';
+    elements.geminiKeyMessage.textContent = 'กำลังบันทึกและทดสอบ API Key กลาง...';
   }
   try {
     const res = await fetch('/api/settings/gemini-key', {
@@ -1557,10 +1703,10 @@ async function handleSaveGeminiKey() {
     });
     const data = await res.json();
     if (res.ok && (data.status === 'ok' || data.status === 'saved_with_warning')) {
-      showToast(data.message || 'บันทึก API Key เรียบร้อยแล้ว', data.status === 'ok' ? 'success' : 'warning');
+      showToast(data.message || 'บันทึก API Key กลางทั้งระบบเรียบร้อยแล้ว', data.status === 'ok' ? 'success' : 'warning');
       if (elements.geminiKeyMessage) {
         elements.geminiKeyMessage.className = data.status === 'ok' ? 'key-status-msg success' : 'key-status-msg';
-        elements.geminiKeyMessage.textContent = `✓ บันทึกเรียบร้อย (${data.masked})`;
+        elements.geminiKeyMessage.textContent = `✓ บันทึกคีย์กลางทั้งระบบแล้ว (${data.masked}) — ใช้ได้ทุกวิชาและทุกงาน`;
       }
       if (elements.geminiApiKeyInput) elements.geminiApiKeyInput.value = '';
       checkGeminiKeyStatus();
@@ -1575,6 +1721,27 @@ async function handleSaveGeminiKey() {
   } catch (e) {
     showToast(`เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: ${e.message}`, 'error');
   }
+}
+
+async function handleClearGeminiKey() {
+  saveGlobalGeminiKeyLocal('');
+  if (elements.geminiApiKeyInput) elements.geminiApiKeyInput.value = '';
+  try {
+    const res = await fetch('/api/settings/gemini-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: '', skip_test: true }),
+    });
+    const data = res.ok ? await res.json() : {};
+    showToast(data.message || 'ล้าง Gemini API Key ที่บันทึกไว้แล้ว', 'info');
+    if (elements.geminiKeyMessage) {
+      elements.geminiKeyMessage.className = 'key-status-msg';
+      elements.geminiKeyMessage.textContent = data.message || 'ล้างคีย์ที่บันทึกไว้แล้ว';
+    }
+  } catch (e) {
+    showToast('ล้างคีย์ในเบราว์เซอร์เรียบร้อยแล้ว', 'info');
+  }
+  checkGeminiKeyStatus();
 }
 
 async function handleSaveAssignment() {
@@ -1878,6 +2045,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
       }
     }
 
+    const globalApiKey = getSavedGlobalGeminiKey();
     const payload = {
       course_id: course.id,
       assignment_id: activeId,
@@ -1886,6 +2054,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
       code: codeToGrade || undefined,
       filename: filename,
       prompt: promptToUse,
+      api_key: globalApiKey || undefined,
       student_name: student.student_name || `${student.owner}/${student.repo}`,
     };
 
@@ -2023,6 +2192,21 @@ function setupKeyboardShortcuts() {
       e.preventDefault();
       toggleZenMode();
     } else if (e.key === 'Escape') {
+      if (elements.aiSettingsModal && elements.aiSettingsModal.style.display !== 'none') {
+        e.preventDefault();
+        closeAiSettingsModal();
+        return;
+      }
+      if (elements.assignmentModal && elements.assignmentModal.style.display !== 'none') {
+        e.preventDefault();
+        closeAssignmentModal();
+        return;
+      }
+      if (elements.inputModal && elements.inputModal.style.display !== 'none') {
+        e.preventDefault();
+        closeModal();
+        return;
+      }
       const layout = document.querySelector('.app-layout');
       if (layout && layout.classList.contains('zen-mode')) {
         e.preventDefault();

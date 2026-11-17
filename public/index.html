@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261117-clean5">
+  <link rel="stylesheet" href="/static/app.css?v=20261117-clean6">
 </head>
 
 <body>
@@ -146,6 +146,16 @@
         </button>
 
         <div class="header-menu-group">
+          <button id="btnOpenAiSettings" class="menu-group-btn menu-btn-ai"
+            title="ตั้งค่า Gemini API Key กลางทั้งระบบ (ใช้ร่วมกันทุกวิชาและทุกงาน)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4">
+              </path>
+            </svg>
+            <i id="headerAiKeyDot" class="header-ai-dot" aria-hidden="true"></i>
+          </button>
+          <span class="menu-group-divider"></span>
           <button id="btnExportCsv" class="menu-group-btn" title="ส่งออกรายงานผลการตรวจและบันทึกเป็นไฟล์ CSV (Excel)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
@@ -262,6 +272,16 @@
               <span class="course-hub-eyebrow">WORKSPACE & ASSIGNMENT HUB</span>
               <h2>เลือกรายวิชาและงานที่ต้องการตรวจ</h2>
               <p>เลือกงานและตรวจสอบโจทย์ก่อนเริ่มตรวจ หรือกดเพิ่มโจทย์ใหม่สำหรับแต่ละชิ้นงานได้ทันที</p>
+              <div class="hub-global-ai-bar" id="hubGlobalAiBar">
+                <div class="hub-global-ai-status">
+                  <span class="hub-ai-icon">🤖</span>
+                  <span class="hub-ai-label">Gemini AI กลางของระบบ:</span>
+                  <span id="hubGeminiKeyStatusBadge" class="badge badge-subtle">กำลังตรวจสอบ...</span>
+                </div>
+                <button type="button" id="btnHubAiSettings" class="btn btn-secondary btn-xs">
+                  🔑 ตั้งค่า API Key (ใช้ร่วมกันทั้งระบบ)
+                </button>
+              </div>
             </div>
 
             <!-- Interactive Course Cards Grid (Populated dynamically by app.js) -->
@@ -725,32 +745,20 @@ https://github.com/patvikan24-oss/my-profil-013
             placeholder="วางข้อความคำสั่งโจทย์ที่นี่..."></textarea>
         </div>
 
-        <!-- Gemini API Key Settings Box -->
-        <div class="ai-key-config-box">
-          <div class="ai-key-header">
-            <div class="ai-key-title">
-              <span>🤖</span>
-              <strong>การเชื่อมต่อ Gemini AI สำหรับตรวจงานเชิงลึก</strong>
+        <!-- System-wide Gemini API Key Notice (Shared across all courses & assignments 1-40) -->
+        <div class="ai-key-system-strip">
+          <div class="ai-key-system-info">
+            <span class="ai-system-icon">🤖</span>
+            <div>
+              <strong>Gemini API Key กลางทั้งระบบ</strong>
+              <div class="ai-key-system-sub">ใช้คีย์เดียวกันทุกวิชาและทุกงาน (งาน 1–40) ไม่ต้องกรอกแยกแต่ละงาน</div>
             </div>
+          </div>
+          <div class="ai-key-system-actions">
             <span id="geminiKeyStatusBadge" class="badge badge-subtle">กำลังตรวจสอบ...</span>
-          </div>
-          <p class="ai-key-desc">
-            เชื่อมต่อ Gemini Flash ฟรี เพื่อตรวจตรรกะโค้ด, สูตรคำนวณ, และสร้างคำแนะนำภาษาไทยสำหรับนักเรียน (หากไม่ใส่
-            API Key ระบบจะตรวจโครงสร้าง OOP ผ่าน AST แทน)
-          </p>
-          <div class="ai-key-input-row">
-            <input type="password" id="geminiApiKeyInput" class="form-input ai-key-input"
-              placeholder="วาง Gemini API Key ที่นี่ (AIzaSy...)">
-            <button type="button" id="btnSaveGeminiKey" class="btn btn-secondary btn-sm">
-              <span>บันทึก & ทดสอบ</span>
+            <button type="button" id="btnOpenAiSettingsFromAssignment" class="btn btn-secondary btn-xs">
+              🔑 ตั้งค่า / เปลี่ยนคีย์กลาง
             </button>
-          </div>
-          <div class="ai-key-help-row">
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"
-              class="link-external">
-              🔑 รับ Gemini API Key ฟรีจาก Google AI Studio ↗
-            </a>
-            <span id="geminiKeyMessage" class="key-status-msg"></span>
           </div>
         </div>
       </div>
@@ -764,6 +772,59 @@ https://github.com/patvikan24-oss/my-profil-013
           </svg>
           <span>บันทึกโจทย์ประจำงาน</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global System Gemini API Key Settings Modal (Single Key Across All Courses & Assignments) -->
+  <div id="aiSettingsModal" class="modal-overlay modal-overlay-top" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-header-icon-title">
+          <span class="modal-title-icon">🤖</span>
+          <div>
+            <h3>ตั้งค่า Gemini API Key กลางทั้งระบบ</h3>
+            <span class="modal-course-sub">กรอกเพียงครั้งเดียว ใช้งานร่วมกันได้ทุกวิชาและทุกงาน (งาน 1–40)</span>
+          </div>
+        </div>
+        <button id="btnCloseAiSettingsModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="ai-key-config-box" style="margin-top: 0;">
+          <div class="ai-key-header">
+            <div class="ai-key-title">
+              <span>🔑</span>
+              <strong>สถานะ API Key ของทั้งระบบ</strong>
+            </div>
+            <span id="aiModalKeyStatusBadge" class="badge badge-subtle">กำลังตรวจสอบ...</span>
+          </div>
+          <p class="ai-key-desc">
+            เชื่อมต่อ Gemini Flash ฟรีครั้งเดียว ระบบจะจำและใช้คีย์นี้ตรวจโค้ดร่วมกันทุกวิชาและทุกงานโดยไม่ต้องใส่ซ้ำ
+            (หากไม่ตั้งค่า ระบบจะตรวจโครงสร้าง OOP ผ่าน AST แทน)
+          </p>
+          <div class="ai-key-input-row">
+            <input type="password" id="geminiApiKeyInput" class="form-input ai-key-input"
+              placeholder="วาง Gemini API Key ที่นี่ (AIzaSy...)">
+            <button type="button" id="btnSaveGeminiKey" class="btn btn-primary btn-sm">
+              <span>บันทึก & ทดสอบ</span>
+            </button>
+          </div>
+          <div class="ai-key-help-row">
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"
+              class="link-external">
+              🔑 รับ Gemini API Key ฟรีจาก Google AI Studio ↗
+            </a>
+            <button type="button" id="btnClearGeminiKey" class="btn btn-danger-subtle btn-xs">
+              🗑️ ล้างคีย์ที่บันทึกไว้
+            </button>
+          </div>
+          <div class="ai-key-msg-row">
+            <span id="geminiKeyMessage" class="key-status-msg"></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnDoneAiSettingsModal" class="btn btn-secondary">ปิดหน้าต่าง</button>
       </div>
     </div>
   </div>
@@ -797,7 +858,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261117-clean5"></script>
+  <script src="/static/app.js?v=20261117-clean6"></script>
 </body>
 
 </html>
