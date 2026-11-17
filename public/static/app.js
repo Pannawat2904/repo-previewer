@@ -170,6 +170,7 @@ const elements = {
   pyPromptPane: document.getElementById('pyPromptPane'),
   pyPromptBody: document.getElementById('pyPromptBody'),
   btnStudioEditPrompt: document.getElementById('btnStudioEditPrompt'),
+  btnClosePromptPane: document.getElementById('btnClosePromptPane'),
   btnCollapseSidebarDesktop: document.getElementById('btnCollapseSidebarDesktop'),
   btnToggleSidebarBar: document.getElementById('btnToggleSidebarBar'),
   sidebarToggleText: document.getElementById('sidebarToggleText'),
@@ -374,35 +375,29 @@ function renderCourseHub() {
           <span class="course-hub-type-badge">${escapeHtml(theme.badge)}</span>
         </div>
         <div class="course-hub-top-right">
-          ${isActive ? '<span class="hub-active-pill"><span class="hub-active-dot"></span>เลือกอยู่</span>' : ''}
+          ${isActive ? '<span class="hub-active-pill"><span class="hub-active-dot"></span>วิชาปัจจุบัน</span>' : ''}
         </div>
       </div>
 
       <div class="course-hub-card-body">
         <h3 class="course-hub-title">${escapeHtml(course.subject)}</h3>
 
-        <div class="hub-assignment-panel">
-          <div class="hub-assignment-header">
-            <div class="hub-assignment-label">
-              <span>📋</span>
-              <strong>ชิ้นงาน & โจทย์:</strong>
-            </div>
-            <div class="hub-assignment-btns">
-              <button type="button" class="btn btn-secondary btn-sm btn-hub-add-task" data-course-id="${escapeHtml(course.id)}" title="เพิ่มงานใหม่และระบุโจทย์">+ เพิ่มงาน</button>
-              <button type="button" class="btn btn-outline btn-sm btn-hub-edit-task" data-course-id="${escapeHtml(course.id)}" title="ดูหรือแก้ไขโจทย์ของงานนี้">✏️ แก้โจทย์</button>
-            </div>
-          </div>
-          <div class="hub-assignment-select-wrap">
-            <select class="hub-assignment-select" data-course-id="${escapeHtml(course.id)}" title="เลือกชิ้นงานและโจทย์ที่จะตรวจ">
+        <div class="hub-clean-assignment-bar">
+          <div class="hub-clean-select-wrap">
+            <span class="hub-clean-icon">📋</span>
+            <select class="hub-assignment-select" data-course-id="${escapeHtml(course.id)}" title="เลือกงานที่ต้องการตรวจ">
               ${taskList.map(t => `<option value="${escapeHtml(t.id)}"${t.id === activeTaskId ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
             </select>
           </div>
-          <div class="hub-prompt-snippet-card" title="ข้อกำหนดโจทย์ของงานนี้">
-            <div class="hub-prompt-snippet-header">
-              <span class="hub-prompt-badge">🎯 ข้อกำหนด</span>
-              <span class="hub-prompt-task-name">${escapeHtml(activeTask.title)}</span>
-            </div>
-            <div class="hub-prompt-text-preview">${escapeHtml(promptSnippet)}</div>
+          <div class="hub-clean-actions">
+            <button type="button" class="btn-hub-tool btn-hub-edit-task" data-course-id="${escapeHtml(course.id)}" title="ดูหรือแก้ไขโจทย์ของงานนี้">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              <span>แก้โจทย์</span>
+            </button>
+            <button type="button" class="btn-hub-tool btn-hub-add-task" data-course-id="${escapeHtml(course.id)}" title="เพิ่มงานใหม่สำหรับวิชานี้">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>เพิ่มงาน</span>
+            </button>
           </div>
         </div>
       </div>
@@ -410,8 +405,8 @@ function renderCourseHub() {
       <div class="course-hub-card-footer">
         <div class="course-hub-meta">
           <div class="course-hub-stats-row">
-            <span>งานนักเรียน <strong>${total}</strong> คน</span>
-            ${total > 0 ? `<span>ตรวจแล้ว <strong>${viewed}/${total}</strong> (${pct}%)</span>` : '<span class="meta-muted">ยังไม่มีงานนำเข้า</span>'}
+            <span>นักเรียน <strong>${total}</strong> คน ${total > 0 ? `(ตรวจแล้ว <strong>${viewed}/${total}</strong>)` : ''}</span>
+            ${total > 0 ? `<span class="hub-pct-badge">${pct}%</span>` : '<span class="meta-muted">ยังไม่มีงานนำเข้า</span>'}
           </div>
           <div class="course-hub-progress-track">
             <div class="course-hub-progress-fill" style="width: ${pct}%;"></div>
@@ -423,7 +418,7 @@ function renderCourseHub() {
             total > 0
               ? `
                 <button type="button" class="btn-hub-action primary btn-hub-open" data-course-id="${escapeHtml(course.id)}">
-                  <span>เข้าตรวจงาน (${total})</span>
+                  <span>เข้าตรวจงาน (${total} คน)</span>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </button>
                 <button type="button" class="btn-hub-action subtle btn-hub-import" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
@@ -432,7 +427,7 @@ function renderCourseHub() {
               `
               : `
                 <button type="button" class="btn-hub-action primary btn-hub-import" data-course-id="${escapeHtml(course.id)}" data-import-mode="${theme.defaultImport}">
-                  <span>${theme.type === 'python' ? 'อัปโหลดไฟล์ Python / นำเข้างาน' : 'นำเข้าลิงก์ GitHub / อัปโหลดไฟล์'}</span>
+                  <span>+ นำเข้างานเพื่อเริ่มตรวจ</span>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
               `
@@ -682,6 +677,9 @@ function setupEventListeners() {
   }
   if (elements.btnTogglePromptPane) {
     elements.btnTogglePromptPane.addEventListener('click', toggleStudioPromptPane);
+  }
+  if (elements.btnClosePromptPane) {
+    elements.btnClosePromptPane.addEventListener('click', toggleStudioPromptPane);
   }
   if (elements.modalAssignmentTaskSelect) {
     elements.modalAssignmentTaskSelect.addEventListener('change', (e) => {

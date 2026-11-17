@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261117-1">
+  <link rel="stylesheet" href="/static/app.css?v=20261117-clean1">
 </head>
 <body>
   <!-- Animated Ambient Aurora & Grid Background -->
@@ -354,17 +354,17 @@
             <div id="pythonPreviewStudio" class="py-studio" style="display: none;">
               <div class="py-studio-toolbar">
                 <div class="py-toolbar-left">
-                  <button type="button" id="btnTogglePromptPane" class="btn btn-secondary btn-sm active" title="ซ่อน/แสดง แถบโจทย์และเกณฑ์ตรวจข้างโค้ด">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                    <span>เทียบกับโจทย์</span>
-                    <span id="studioRubricBadge" class="rubric-mini-pill" style="display: none;">รอตรวจ</span>
-                  </button>
                   <select id="pyEntryFileSelect" class="py-file-select" title="เลือกไฟล์ Python ที่ต้องการรัน"></select>
-                  <button id="btnRunPython" class="btn btn-primary btn-sm" title="รันโค้ด Python และดูผลลัพธ์ (คีย์ลัด Ctrl+Enter)">
+                  <button id="btnRunPython" class="btn btn-primary btn-sm btn-run-hero" title="รันโค้ด Python และดูผลลัพธ์ (คีย์ลัด Ctrl+Enter)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
                     <span>รันโค้ด</span>
+                  </button>
+                  <button type="button" id="btnTogglePromptPane" class="btn btn-secondary btn-sm" title="ซ่อน/แสดง แถบโจทย์และเกณฑ์ตรวจข้างโค้ด">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    <span>เทียบกับโจทย์</span>
+                    <span id="studioRubricBadge" class="rubric-mini-pill" style="display: none;">รอตรวจ</span>
                   </button>
                   <button type="button" id="btnGradeStudentInStudio" class="btn btn-secondary btn-sm" title="ตรวจโค้ดตามโจทย์และเกณฑ์การให้คะแนน">
                     <span>⚡ ตรวจตามโจทย์</span>
@@ -388,12 +388,15 @@
               </div>
 
               <!-- Split Workspace: Left = Prompt Comparison, Middle = Code Editor, Right = Output Console -->
-              <div class="py-studio-split has-prompt" id="pyStudioSplit">
+              <div class="py-studio-split" id="pyStudioSplit">
                 <!-- Column 1: Assignment Prompt & Live Comparison Checklist -->
-                <div class="py-prompt-pane" id="pyPromptPane">
+                <div class="py-prompt-pane" id="pyPromptPane" style="display: none;">
                   <div class="py-pane-header">
                     <span class="py-pane-title">🎯 โจทย์ & เกณฑ์ตรวจ</span>
-                    <button type="button" id="btnStudioEditPrompt" class="btn-text-sm" title="แก้ไขข้อความโจทย์ก่อนตรวจ">✏️ แก้โจทย์</button>
+                    <div class="py-pane-header-actions">
+                      <button type="button" id="btnStudioEditPrompt" class="btn-text-sm" title="แก้ไขข้อความโจทย์ก่อนตรวจ">✏️ แก้โจทย์</button>
+                      <button type="button" id="btnClosePromptPane" class="btn-pane-close" title="ปิดแถบโจทย์เพื่อขยายพื้นที่ดูโค้ด">✕</button>
+                    </div>
                   </div>
                   <div class="py-prompt-body" id="pyPromptBody">
                     <!-- Dynamically populated -->
@@ -711,6 +714,6 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261117-1"></script>
+  <script src="/static/app.js?v=20261117-clean1"></script>
 </body>
 </html>
