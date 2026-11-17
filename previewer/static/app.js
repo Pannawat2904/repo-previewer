@@ -1091,6 +1091,10 @@ function populateAssignmentSelect(selectEl, taskList, activeId, includeAddAction
   }
 }
 
+function formatEmptySlotLabel(slotNum) {
+  return `➕ งานที่ ${slotNum} (ยังไม่มีงาน — เลือกเพื่อเพิ่ม)`;
+}
+
 function populateModalSlotsSelect(selectEl, taskList, selectedVal) {
   if (!selectEl) return;
   selectEl.innerHTML = '';
@@ -1114,15 +1118,14 @@ function populateModalSlotsSelect(selectEl, taskList, selectedVal) {
       matched.forEach(task => {
         const opt = document.createElement('option');
         opt.value = task.id;
-        const hasPrompt = Boolean(task.prompt && task.prompt.trim());
-        opt.textContent = `${hasPrompt ? '✓' : '●'} ${task.title}`;
+        opt.textContent = task.title;
         if (opt.value === selectedVal) opt.selected = true;
         selectEl.appendChild(opt);
       });
     } else {
       const opt = document.createElement('option');
       opt.value = `slot:${n}`;
-      opt.textContent = `➕ งานที่ ${n} (ยังไม่มีโจทย์ — เลือกเพื่อเพิ่ม)`;
+      opt.textContent = formatEmptySlotLabel(n);
       if (opt.value === selectedVal) opt.selected = true;
       selectEl.appendChild(opt);
     }
@@ -1131,7 +1134,7 @@ function populateModalSlotsSelect(selectEl, taskList, selectedVal) {
   extraTasks.forEach(task => {
     const opt = document.createElement('option');
     opt.value = task.id;
-    opt.textContent = `✓ ${task.title}`;
+    opt.textContent = task.title;
     if (opt.value === selectedVal) opt.selected = true;
     selectEl.appendChild(opt);
   });
@@ -1409,7 +1412,7 @@ function handleAddNewAssignmentTask() {
     if (!opt) {
       opt = document.createElement('option');
       opt.value = slotVal;
-      opt.textContent = `➕ งานที่ ${nextNum} (ยังไม่มีโจทย์ — เลือกเพื่อเพิ่ม)`;
+      opt.textContent = formatEmptySlotLabel(nextNum);
       elements.modalAssignmentTaskSelect.appendChild(opt);
     }
     elements.modalAssignmentTaskSelect.value = slotVal;
