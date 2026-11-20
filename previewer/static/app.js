@@ -39,6 +39,8 @@ const state = {
   pyOriginalCodeMap: {},
   courseAssignments: {},
   promptDescExpanded: false,
+  scoresFilter: 'all',
+  scoresSearchQuery: '',
 };
 
 let pyodideReadyPromise = null;
@@ -94,8 +96,12 @@ const elements = {
     preview: document.getElementById('tabPreview'),
     code: document.getElementById('tabCode'),
     inspect: document.getElementById('tabInspect'),
+    scores: document.getElementById('tabScores'),
   },
   inspectBadgeCount: document.getElementById('inspectBadgeCount'),
+  scoresBadgeCount: document.getElementById('scoresBadgeCount'),
+  scoresMenuContainer: document.getElementById('scoresMenuContainer'),
+  btnOpenScoresMenu: document.getElementById('btnOpenScoresMenu'),
   
   previewToolbar: document.getElementById('previewToolbar'),
   deviceButtons: document.querySelectorAll('.device-btn'),
@@ -177,6 +183,7 @@ const elements = {
   btnCloseClassSummaryModal: document.getElementById('btnCloseClassSummaryModal'),
   btnDoneClassSummaryModal: document.getElementById('btnDoneClassSummaryModal'),
   btnExportCsvFromSummary: document.getElementById('btnExportCsvFromSummary'),
+  btnExportRawCsvFromSummary: document.getElementById('btnExportRawCsvFromSummary'),
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
   btnDeleteAssignment: document.getElementById('btnDeleteAssignment'),
@@ -818,7 +825,13 @@ function setupEventListeners() {
     });
   }
   if (elements.btnExportCsvFromSummary) {
-    elements.btnExportCsvFromSummary.addEventListener('click', exportResultsToCsv);
+    elements.btnExportCsvFromSummary.addEventListener('click', exportResultsToExcelXlsx);
+  }
+  if (elements.btnExportRawCsvFromSummary) {
+    elements.btnExportRawCsvFromSummary.addEventListener('click', exportResultsToCsv);
+  }
+  if (elements.btnOpenScoresMenu) {
+    elements.btnOpenScoresMenu.addEventListener('click', openScoresMenuView);
   }
   if (elements.assignmentGradeBadge) {
     elements.assignmentGradeBadge.addEventListener('click', handleGradeBadgeClick);
@@ -980,9 +993,9 @@ function setupEventListeners() {
   // Clear cache
   elements.btnClearAllCache.addEventListener('click', handleClearAllCache);
 
-  // Export CSV
+  // Export Excel (.xlsx)
   if (elements.btnExportCsv) {
-    elements.btnExportCsv.addEventListener('click', exportResultsToCsv);
+    elements.btnExportCsv.addEventListener('click', exportResultsToExcelXlsx);
   }
 
   // Mobile Drawer toggles
@@ -3005,8 +3018,11 @@ function applyEvaluationNote(student, customCommentText = undefined) {
   updateStudentItemCard(student);
   updateViewedStats();
   saveStudentReview(student.owner, student.repo, true, note, student.teacher_comment, student.assignment_evaluation);
+  updateScoresMenuBadge();
   if (state.activeTab === 'inspect') {
     renderInspectTab(student);
+  } else if (state.activeTab === 'scores') {
+    renderScoresMenuTab();
   }
   showToast('💾 บันทึกคะแนนและคอมเมนต์ชี้แจงของนักเรียนคนนี้เก็บไว้เรียบร้อย!', 'success');
 }
@@ -3044,6 +3060,9 @@ function setupKeyboardShortcuts() {
     } else if (e.key === '3') {
       e.preventDefault();
       switchTab('inspect');
+    } else if (e.key === '4') {
+      e.preventDefault();
+      switchTab('scores');
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       handleReloadCurrentRepo();
@@ -3093,66 +3112,834 @@ function setupKeyboardShortcuts() {
 }
 
 // -------------------------------------------------------------
-// Export Results to CSV (with Thai UTF-8 BOM support)
+// Dedicated Scores & Comments Menu (#tabScores) & Native Excel (.xlsx) Export
 // -------------------------------------------------------------
-function exportResultsToCsv() {
-  if (!state.students || state.students.length === 0) {
-    alert('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้างานก่อน');
+function extractStudentIdAndCleanName(student) {
+  if (!student) return { studentId: '', displayName: 'นักเรียน', fileName: '' };
+  const rawName = String(student.student_name || student.repo || 'นักเรียน').trim();
+  const rawFile = String(student.raw_input || student.repo || '').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '').trim();
+  const baseFile = rawFile.replace(/\.(py|ipynb|zip|html|htm)$/i, '');
+
+  // สกัดรหัส/เลขที่นักเรียน เช่น kanwara_004 -> 004, Bua024 -> 024, DailySalese_010 -> 010
+  const idMatch = baseFile.match(/(?:[_-]|^)(\d{2,12})$/) || rawName.match(/(?:[_-]|^|\D)(\d{2,12})$/);
+  const studentId = idMatch ? idMatch[1] : '';
+
+  return {
+    studentId,
+    displayName: rawName,
+    fileName: rawFile || `${rawName}.py`,
+  };
+}
+
+function updateScoresMenuBadge() {
+  const badge = elements.scoresBadgeCount || document.getElementById('scoresBadgeCount');
+  if (!badge) return;
+  const students = state.students || [];
+  if (students.length === 0) {
+    badge.style.display = 'none';
+    return;
+  }
+  const scoredCount = students.filter(s => Boolean(s.assignment_evaluation || s.teacher_comment || s.note || s.viewed)).length;
+  badge.style.display = 'inline-block';
+  badge.textContent = `${scoredCount}/${students.length}`;
+}
+
+function openScoresMenuView() {
+  const students = state.students || [];
+  if (students.length > 0) {
+    if (state.currentIndex < 0) {
+      selectStudent(0);
+    } else {
+      setHubSidebarMode(false);
+      if (elements.blankState) elements.blankState.style.display = 'none';
+      if (elements.studentWorkspace) elements.studentWorkspace.style.display = 'flex';
+      if (elements.topWorkspaceBar) elements.topWorkspaceBar.style.display = 'flex';
+    }
+    switchTab('scores');
+  } else {
+    openClassScoreSummaryModal();
+  }
+}
+
+function getStudentRubricScoreByIndex(ev, idx1to6) {
+  if (!ev || !Array.isArray(ev.rubric_scores)) return null;
+  const found = ev.rubric_scores.find(r => Number(r.id) === idx1to6) || ev.rubric_scores[idx1to6 - 1];
+  return found || null;
+}
+
+function renderScoresMenuTab() {
+  const container = elements.scoresMenuContainer || document.getElementById('scoresMenuContainer');
+  if (!container) return;
+
+  updateScoresMenuBadge();
+  const course = getActiveCourse();
+  const asg = getActiveAssignmentData();
+  const courseLabel = course ? course.subject : 'รายวิชาปัจจุบัน';
+  const assignLabel = (asg && asg.title) || (course && course.assignment) || 'งานปัจจุบัน';
+  const students = state.students || [];
+
+  if (students.length === 0) {
+    container.innerHTML = `
+      <div class="scores-hero-banner">
+        <div>
+          <div class="scores-hero-title">📊 เมนูตารางสรุปคะแนนและคอมเมนต์ชี้แจงนักเรียน</div>
+          <div class="scores-hero-sub">${escapeHtml(courseLabel)} · ${escapeHtml(assignLabel)}</div>
+        </div>
+      </div>
+      <div class="scores-master-card" style="padding: 40px 24px; text-align: center; color: #94a3b8;">
+        <div style="font-size: 2rem; margin-bottom: 10px;">📂</div>
+        <div style="font-size: 1rem; font-weight: 700; color: #e2e8f0;">ยังไม่มีรายชื่อนักเรียนในวิชานี้</div>
+        <div style="font-size: 0.85rem; margin-top: 6px;">กรุณากดปุ่ม "+ นำเข้างานตรวจ" ด้านบนเพื่ออัปโหลดไฟล์งานนักเรียนก่อน</div>
+      </div>
+    `;
     return;
   }
 
-  const activeCourse = getActiveCourse();
-  const courseTitle = activeCourse ? `${activeCourse.subject} - ${activeCourse.assignment}` : 'ทั่วไป';
+  // คำนวณสถิติ KPI ทั้งห้อง
+  const totalStudents = students.length;
+  const evaluatedList = students.filter(s => s.assignment_evaluation && typeof s.assignment_evaluation.score === 'number');
+  const gradedOrViewedCount = students.filter(s => Boolean(s.assignment_evaluation || s.viewed || s.note || s.teacher_comment)).length;
+  const maxScoreDefault = (asg && Number(asg.max_score)) || 20;
 
-  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / ไฟล์', 'ชุดข้อสอบ', 'คะแนนที่ได้', 'คะแนนเต็ม', 'ระดับคุณภาพ', 'คะแนนรายข้อ (Rubric)', 'คอมเมนต์ / คำชี้แจงคะแนนสำหรับนักเรียน', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'โอกาสใช้ AI (%)'];
-  const rows = state.students.map((s, index) => {
+  let avgScoreText = '-';
+  let minMaxText = 'ยังไม่มีคะแนนที่ตรวจ';
+  if (evaluatedList.length > 0) {
+    const scores = evaluatedList.map(s => Number(s.assignment_evaluation.score) || 0);
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const avg = (sum / scores.length).toFixed(1);
+    const maxS = Math.max(...scores);
+    const minS = Math.min(...scores);
+    avgScoreText = `${avg} / ${maxScoreDefault}`;
+    minMaxText = `สูงสุด ${maxS} · ต่ำสุด ${minS} คะแนน`;
+  }
+
+  const setCounts = { A: 0, B: 0, C: 0, D: 0 };
+  const qualityCounts = { 'ดีมาก': 0, 'ดี': 0, 'พอใช้': 0, 'ปรับปรุง': 0 };
+  students.forEach(s => {
+    const ev = s.assignment_evaluation;
+    const sc = (ev && ev.exam_set) || s.confirmed_exam_set || '';
+    if (sc && setCounts[sc] !== undefined) setCounts[sc]++;
+    if (ev && typeof ev.score === 'number') {
+      const q = getExamQualityLevelInfo(ev.score);
+      if (qualityCounts[q.level] !== undefined) qualityCounts[q.level]++;
+    }
+  });
+
+  // กรองรายชื่อตาม scoresFilter และ scoresSearchQuery
+  const activeFilter = state.scoresFilter || 'all';
+  const query = (state.scoresSearchQuery || '').trim().toLowerCase();
+
+  const filteredRows = students
+    .map((s, idx) => ({ student: s, index: idx }))
+    .filter(({ student: s }) => {
+      const ev = s.assignment_evaluation;
+      const setCode = ((ev && ev.exam_set) || s.confirmed_exam_set || '').toUpperCase();
+      const isScored = Boolean(ev || s.viewed || s.note || s.teacher_comment);
+
+      if (activeFilter === 'scored' && !isScored) return false;
+      if (activeFilter === 'unscored' && isScored) return false;
+      if (['A', 'B', 'C', 'D'].includes(activeFilter) && setCode !== activeFilter) return false;
+
+      if (query) {
+        const info = extractStudentIdAndCleanName(s);
+        const commentText = (s.teacher_comment || (ev ? buildAutoExplanationFromEvaluation(s) : '') || s.note || '').toLowerCase();
+        const hay = `${info.studentId} ${info.displayName} ${info.fileName} ชุด ${setCode} ${commentText}`.toLowerCase();
+        if (!hay.includes(query)) return false;
+      }
+      return true;
+    });
+
+  const rowsHtml = filteredRows.map(({ student: s, index: idx }) => {
+    const info = extractStudentIdAndCleanName(s);
+    const ev = s.assignment_evaluation;
+    const setCode = ((ev && ev.exam_set) || s.confirmed_exam_set || '-').toUpperCase();
+    const setMeta = PRACTICAL_EXAM_SETS_META[setCode] || null;
+    const hasScore = Boolean(ev && typeof ev.score === 'number');
+    const scoreVal = hasScore ? ev.score : null;
+    const maxVal = (ev && ev.max_score) || maxScoreDefault;
+    const qInfo = hasScore ? getExamQualityLevelInfo(scoreVal) : null;
+    const commentVal = s.teacher_comment !== undefined && s.teacher_comment !== ''
+      ? s.teacher_comment
+      : (ev ? buildAutoExplanationFromEvaluation(s) : (s.note || ''));
+
+    // ชิปคะแนนรายข้อ 1–6
+    let rubricChipsHtml = '<span style="color:#64748b; font-size:0.76rem;">ยังไม่ได้ตรวจรายข้อ (กด "⚡ ตรวจงานนี้" เพื่อประเมิน)</span>';
+    if (ev && Array.isArray(ev.rubric_scores) && ev.rubric_scores.length > 0) {
+      rubricChipsHtml = `
+        <div class="scores-rubric-mini-grid">
+          ${ev.rubric_scores.map(r => {
+            const sc = Number(r.score) || 0;
+            const mx = Number(r.max_score) || 3;
+            const cls = sc >= mx - 1 ? 'is-high' : (sc >= 1 ? 'is-mid' : 'is-zero');
+            const shortTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
+            return `
+              <div class="scores-rubric-chip ${cls}" title="${escapeHtml(`${r.title} (${sc}/${mx} · ${r.level_label || ''})\nหลักฐาน: ${r.evidence || '-'}`)}">
+                <span style="color:#cbd5e1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">ข้อ ${r.id}</span>
+                <strong style="color:#f8fafc;">${sc}/${mx}</strong>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    const setBadgeHtml = setCode !== '-' && PRACTICAL_EXAM_SETS_META[setCode]
+      ? `<span class="rubric-score-badge lvl-good" style="font-size:0.76rem;">ชุด ${escapeHtml(setCode)}</span>
+         <div style="font-size:0.72rem; color:#94a3b8; margin-top:4px;">${escapeHtml(setMeta ? setMeta.title : '')}</div>`
+      : `<span style="color:#64748b;">ยังไม่ระบุชุด</span>`;
+
+    const scoreHtml = hasScore
+      ? `<div style="font-size:1.15rem; font-weight:800; color:#f8fafc;">${scoreVal} <span style="font-size:0.8rem; font-weight:500; color:#94a3b8;">/ ${maxVal}</span></div>
+         <span class="rubric-score-badge ${qInfo.badgeClass}" style="margin-top:4px; display:inline-block;">${escapeHtml(qInfo.level)}</span>`
+      : (s.note
+          ? `<div style="font-weight:700; color:#fde047;">${escapeHtml(s.note)}</div>`
+          : `<span style="color:#64748b;">ยังไม่ตรวจ</span>`);
+
+    return `
+      <tr class="${idx === state.currentIndex ? 'is-current-student' : ''}" data-row-stu-idx="${idx}">
+        <td style="font-weight:700; color:#94a3b8; width:42px;">${idx + 1}</td>
+        <td style="min-width:190px;">
+          ${info.studentId ? `<span class="scores-stu-id-badge">รหัส/เลขที่: ${escapeHtml(info.studentId)}</span><br>` : ''}
+          <div style="font-weight:700; color:#f8fafc; font-size:0.88rem; word-break:break-all;">${escapeHtml(info.displayName)}</div>
+          <div style="font-size:0.75rem; color:#94a3b8; font-family:var(--font-mono); margin-top:2px; word-break:break-all;">🐍 ${escapeHtml(info.fileName)}</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:7px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary btn-xs btn-scores-jump-student" data-stu-idx="${idx}" title="เปิดดูโค้ดและตาราง Rubric ของนักเรียนคนนี้">
+              🔍 ดูโค้ด / ตรวจ
+            </button>
+            ${!hasScore ? `<button type="button" class="btn btn-primary btn-xs btn-scores-grade-now" data-stu-idx="${idx}">⚡ ตรวจทันที</button>` : ''}
+          </div>
+        </td>
+        <td style="min-width:130px;">${setBadgeHtml}</td>
+        <td style="min-width:110px;">
+          ${scoreHtml}
+          <div style="margin-top:6px; font-size:0.72rem; color:${s.viewed ? '#34d399' : '#94a3b8'};">
+            ${s.viewed ? `✓ ตรวจแล้ว${s.saved_score_at ? ` (${escapeHtml(s.saved_score_at)})` : ''}` : '⏳ รอบันทึก'}
+          </div>
+        </td>
+        <td>${rubricChipsHtml}</td>
+        <td>
+          <div class="scores-comment-box">
+            <textarea class="scores-comment-textarea" data-comment-stu-idx="${idx}" rows="3" placeholder="บันทึกคอมเมนต์หรือเหตุผลชี้แจงคะแนนรายข้อสำหรับนักเรียนคนนี้...">${escapeHtml(commentVal)}</textarea>
+            <div class="scores-comment-actions">
+              <span class="scores-save-hint" data-save-hint-idx="${idx}" style="font-size:0.73rem; color:#94a3b8;">
+                ${s.teacher_comment ? '💾 บันทึกคอมเมนต์ไว้แล้ว' : 'แก้ไขข้อความแล้วกดบันทึกได้ทันที'}
+              </span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button type="button" class="btn btn-primary btn-xs btn-scores-save-comment" data-stu-idx="${idx}">
+                  💾 บันทึกคอมเมนต์
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs btn-scores-copy-report" data-stu-idx="${idx}">
+                  📋 คัดลอกส่งนักเรียน
+                </button>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="scores-hero-banner">
+      <div>
+        <div class="scores-hero-title">
+          <span>📊</span>
+          <span>ตารางสรุปคะแนน & คอมเมนต์ชี้แจงนักเรียนทั้งหมด</span>
+        </div>
+        <div class="scores-hero-sub">
+          วิชา: <strong>${escapeHtml(courseLabel)}</strong> · งาน: <strong>${escapeHtml(assignLabel)}</strong>
+          (แก้ไขคอมเมนต์รายคนและส่งออกเป็นไฟล์ Excel <code>.xlsx</code> แท้แบบไม่เพี้ยนได้ทันที)
+        </div>
+      </div>
+      <div class="scores-hero-actions">
+        <button type="button" id="btnScoresExportXlsx" class="btn btn-primary btn-sm btn-excel-solid">
+          📗 ส่งออกไฟล์ Excel (.xlsx ไม่เพี้ยน)
+        </button>
+        <button type="button" id="btnScoresExportCsv" class="btn btn-secondary btn-sm">
+          📄 ส่งออก CSV (UTF-8)
+        </button>
+        <button type="button" id="btnScoresCopyTsv" class="btn btn-secondary btn-sm" title="คัดลอกตารางทั้งหมดเพื่อนำไปกด Ctrl+V วางใน Excel หรือ Google Sheets ได้ทันที">
+          📋 คัดลอกตารางวางใน Excel
+        </button>
+      </div>
+    </div>
+
+    <div class="scores-kpi-grid">
+      <div class="scores-kpi-card">
+        <span class="scores-kpi-label">ความคืบหน้าการตรวจ</span>
+        <span class="scores-kpi-value" style="color:#34d399;">${gradedOrViewedCount} / ${totalStudents} คน</span>
+        <span class="scores-kpi-meta">มีผลประเมิน Rubric แล้ว ${evaluatedList.length} คน</span>
+      </div>
+      <div class="scores-kpi-card">
+        <span class="scores-kpi-label">คะแนนเฉลี่ยทั้งห้อง</span>
+        <span class="scores-kpi-value" style="color:#38bdf8;">${escapeHtml(avgScoreText)}</span>
+        <span class="scores-kpi-meta">${escapeHtml(minMaxText)}</span>
+      </div>
+      <div class="scores-kpi-card">
+        <span class="scores-kpi-label">จำนวนตามชุดข้อสอบ (A–D)</span>
+        <span class="scores-kpi-value" style="font-size:1.05rem;">
+          A:${setCounts.A} · B:${setCounts.B} · C:${setCounts.C} · D:${setCounts.D}
+        </span>
+        <span class="scores-kpi-meta">คลิกตัวกรองด้านล่างเพื่อดูแยกทีละชุด</span>
+      </div>
+      <div class="scores-kpi-card">
+        <span class="scores-kpi-label">ระดับคุณภาพ</span>
+        <span class="scores-kpi-value" style="font-size:0.95rem;">
+          ดีมาก:${qualityCounts['ดีมาก']} · ดี:${qualityCounts['ดี']} · พอใช้:${qualityCounts['พอใช้']} · ปรับปรุง:${qualityCounts['ปรับปรุง']}
+        </span>
+        <span class="scores-kpi-meta">เกณฑ์มาตรฐาน 20 คะแนน</span>
+      </div>
+    </div>
+
+    <div class="scores-filter-toolbar">
+      <input type="text" id="scoresMenuSearchInput" class="scores-search-input"
+        placeholder="🔍 ค้นหาชื่อ, รหัสนักเรียน (เช่น 004, 020), ชื่อไฟล์ หรือคอมเมนต์..."
+        value="${escapeHtml(state.scoresSearchQuery || '')}">
+      <div class="scores-filter-pills">
+        <button type="button" class="scores-filter-pill ${activeFilter === 'all' ? 'active' : ''}" data-scores-filter="all">ทั้งหมด (${totalStudents})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'scored' ? 'active' : ''}" data-scores-filter="scored">✓ ตรวจแล้ว (${gradedOrViewedCount})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'unscored' ? 'active' : ''}" data-scores-filter="unscored">⏳ ยังไม่ตรวจ (${totalStudents - gradedOrViewedCount})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'A' ? 'active' : ''}" data-scores-filter="A">ชุด A (${setCounts.A})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'B' ? 'active' : ''}" data-scores-filter="B">ชุด B (${setCounts.B})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'C' ? 'active' : ''}" data-scores-filter="C">ชุด C (${setCounts.C})</button>
+        <button type="button" class="scores-filter-pill ${activeFilter === 'D' ? 'active' : ''}" data-scores-filter="D">ชุด D (${setCounts.D})</button>
+      </div>
+    </div>
+
+    <div class="scores-master-card">
+      <div class="scores-table-scroll">
+        <table class="scores-master-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>รหัส / ชื่อนักเรียน & ไฟล์งาน</th>
+              <th>ชุดข้อสอบ</th>
+              <th>คะแนนรวม</th>
+              <th>คะแนนรายข้อ (Rubric ข้อ 1–6)</th>
+              <th>คอมเมนต์ & คำชี้แจงคะแนนสำหรับนักเรียน (แก้ไขและบันทึกได้)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || `<tr><td colspan="6" style="text-align:center; padding:28px; color:#94a3b8;">ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Bind buttons inside #scoresMenuContainer
+  const btnXlsx = container.querySelector('#btnScoresExportXlsx');
+  if (btnXlsx) btnXlsx.addEventListener('click', exportResultsToExcelXlsx);
+
+  const btnCsv = container.querySelector('#btnScoresExportCsv');
+  if (btnCsv) btnCsv.addEventListener('click', exportResultsToCsv);
+
+  const btnTsv = container.querySelector('#btnScoresCopyTsv');
+  if (btnTsv) btnTsv.addEventListener('click', copyAllScoresAsTsv);
+
+  const searchIn = container.querySelector('#scoresMenuSearchInput');
+  if (searchIn) {
+    searchIn.addEventListener('input', (e) => {
+      state.scoresSearchQuery = e.target.value;
+      const pos = e.target.selectionStart;
+      renderScoresMenuTab();
+      const newIn = container.querySelector('#scoresMenuSearchInput');
+      if (newIn) {
+        newIn.focus();
+        try { newIn.setSelectionRange(pos, pos); } catch (err) {}
+      }
+    });
+  }
+
+  container.querySelectorAll('.scores-filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      state.scoresFilter = pill.dataset.scoresFilter || 'all';
+      renderScoresMenuTab();
+    });
+  });
+
+  container.querySelectorAll('.btn-scores-jump-student').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.stuIdx, 10);
+      if (students[idx]) {
+        selectStudent(idx);
+        switchTab('inspect');
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-scores-grade-now').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.stuIdx, 10);
+      if (students[idx]) {
+        selectStudent(idx);
+        switchTab('inspect');
+        gradeCurrentStudentAgainstAssignment(students[idx]);
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-scores-save-comment').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.stuIdx, 10);
+      const stu = students[idx];
+      if (!stu) return;
+      const ta = container.querySelector(`.scores-comment-textarea[data-comment-stu-idx="${idx}"]`);
+      const newComment = ta ? ta.value.trim() : '';
+      stu.teacher_comment = newComment;
+      stu.viewed = true;
+      stu.saved_score_at = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      if (stu.assignment_evaluation && !stu.note) {
+        stu.note = stu.assignment_evaluation.suggested_teacher_note || `คะแนน ${stu.assignment_evaluation.score}/${stu.assignment_evaluation.max_score || 20}`;
+      }
+      persistLocalStudentReview(stu);
+      syncActiveCourseState();
+      updateStudentItemCard(stu);
+      updateViewedStats();
+      saveStudentReview(stu.owner, stu.repo, stu.viewed, stu.note || '', stu.teacher_comment, stu.assignment_evaluation);
+      const hintEl = container.querySelector(`.scores-save-hint[data-save-hint-idx="${idx}"]`);
+      if (hintEl) {
+        hintEl.style.color = '#34d399';
+        hintEl.textContent = `✓ บันทึกคอมเมนต์เรียบร้อย (${stu.saved_score_at})`;
+      }
+      showToast(`💾 บันทึกคอมเมนต์ชี้แจงของ "${stu.student_name || stu.repo}" แล้ว`, 'success');
+    });
+  });
+
+  container.querySelectorAll('.btn-scores-copy-report').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.stuIdx, 10);
+      const stu = students[idx];
+      if (!stu) return;
+      const ta = container.querySelector(`.scores-comment-textarea[data-comment-stu-idx="${idx}"]`);
+      if (ta && ta.value.trim()) {
+        stu.teacher_comment = ta.value.trim();
+        persistLocalStudentReview(stu);
+      }
+      copyStudentScoreExplanationReport(stu);
+    });
+  });
+}
+
+// -------------------------------------------------------------
+// Pure-JS Standard Office Open XML (.xlsx) Workbook Generator
+// เปิดใน Microsoft Excel (Mac/Windows), Google Sheets, Numbers ได้ 100% ไม่เพี้ยน
+// -------------------------------------------------------------
+const _CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function computeCrc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) {
+    crc = _CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildStoreZipBlob(entries) {
+  const encoder = new TextEncoder();
+  const fileRecords = entries.map(entry => {
+    const nameBytes = encoder.encode(entry.name);
+    const dataBytes = typeof entry.content === 'string' ? encoder.encode(entry.content) : entry.content;
+    const crc = computeCrc32(dataBytes);
+    return { nameBytes, dataBytes, crc };
+  });
+
+  let localTotalSize = 0;
+  let centralTotalSize = 0;
+  fileRecords.forEach(r => {
+    localTotalSize += 30 + r.nameBytes.length + r.dataBytes.length;
+    centralTotalSize += 46 + r.nameBytes.length;
+  });
+
+  const totalSize = localTotalSize + centralTotalSize + 22;
+  const buf = new Uint8Array(totalSize);
+  const view = new DataView(buf.buffer);
+
+  let offset = 0;
+  fileRecords.forEach(r => {
+    r.localHeaderOffset = offset;
+    view.setUint32(offset, 0x04034b50, true); // Local file header signature
+    view.setUint16(offset + 4, 20, true);     // Version needed (2.0)
+    view.setUint16(offset + 6, 0x0800, true); // UTF-8 filename flag
+    view.setUint16(offset + 8, 0, true);      // Compression method: 0 (STORE)
+    view.setUint16(offset + 10, 0, true);     // Mod time
+    view.setUint16(offset + 12, 0x5421, true);// Mod date
+    view.setUint32(offset + 14, r.crc, true); // CRC-32
+    view.setUint32(offset + 18, r.dataBytes.length, true); // Compressed size
+    view.setUint32(offset + 22, r.dataBytes.length, true); // Uncompressed size
+    view.setUint16(offset + 26, r.nameBytes.length, true); // Filename length
+    view.setUint16(offset + 28, 0, true);     // Extra field length
+    buf.set(r.nameBytes, offset + 30);
+    buf.set(r.dataBytes, offset + 30 + r.nameBytes.length);
+    offset += 30 + r.nameBytes.length + r.dataBytes.length;
+  });
+
+  const centralDirOffset = offset;
+  fileRecords.forEach(r => {
+    view.setUint32(offset, 0x02014b50, true); // Central directory file header signature
+    view.setUint16(offset + 4, 20, true);     // Version made by
+    view.setUint16(offset + 6, 20, true);     // Version needed
+    view.setUint16(offset + 8, 0x0800, true); // UTF-8 flag
+    view.setUint16(offset + 10, 0, true);     // Compression method: 0 (STORE)
+    view.setUint16(offset + 12, 0, true);
+    view.setUint16(offset + 14, 0x5421, true);
+    view.setUint32(offset + 16, r.crc, true);
+    view.setUint32(offset + 20, r.dataBytes.length, true);
+    view.setUint32(offset + 24, r.dataBytes.length, true);
+    view.setUint16(offset + 28, r.nameBytes.length, true);
+    view.setUint16(offset + 30, 0, true);     // Extra field length
+    view.setUint16(offset + 32, 0, true);     // Comment length
+    view.setUint16(offset + 34, 0, true);     // Disk number
+    view.setUint16(offset + 36, 0, true);     // Internal attrs
+    view.setUint32(offset + 38, 0, true);     // External attrs
+    view.setUint32(offset + 42, r.localHeaderOffset, true);
+    buf.set(r.nameBytes, offset + 46);
+    offset += 46 + r.nameBytes.length;
+  });
+
+  const centralDirSize = offset - centralDirOffset;
+  view.setUint32(offset, 0x06054b50, true); // End of central directory signature
+  view.setUint16(offset + 4, 0, true);
+  view.setUint16(offset + 6, 0, true);
+  view.setUint16(offset + 8, fileRecords.length, true);
+  view.setUint16(offset + 10, fileRecords.length, true);
+  view.setUint32(offset + 12, centralDirSize, true);
+  view.setUint32(offset + 16, centralDirOffset, true);
+  view.setUint16(offset + 20, 0, true);
+
+  return new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+}
+
+function escapeXmlForXlsx(val) {
+  return String(val === null || val === undefined ? '' : val)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, '&#10;');
+}
+
+function xlsxColumnLetter(colIdx0) {
+  let n = colIdx0 + 1;
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function buildNativeXlsxBlob(sheetTitle, columns, dataRows) {
+  const safeSheetName = String(sheetTitle || 'สรุปคะแนน').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'สรุปคะแนน';
+
+  const colsXml = columns.map((col, idx) => {
+    const cNum = idx + 1;
+    return `<col min="${cNum}" max="${cNum}" width="${col.width || 16}" customWidth="1"/>`;
+  }).join('');
+
+  // Row 1: Header row (style s="1")
+  const headerCellsXml = columns.map((col, cIdx) => {
+    const ref = `${xlsxColumnLetter(cIdx)}1`;
+    return `<c r="${ref}" s="1" t="inlineStr"><is><t xml:space="preserve">${escapeXmlForXlsx(col.header)}</t></is></c>`;
+  }).join('');
+
+  const sheetRowsXml = [`<row r="1" ht="28" customHeight="1">${headerCellsXml}</row>`];
+
+  dataRows.forEach((rowCells, rIdx) => {
+    const rowNum = rIdx + 2;
+    let maxLinesInRow = 1;
+    const cellsXml = rowCells.map((cell, cIdx) => {
+      const ref = `${xlsxColumnLetter(cIdx)}${rowNum}`;
+      const isObj = cell && typeof cell === 'object';
+      const rawVal = isObj ? cell.value : cell;
+      const cellType = isObj && cell.type ? cell.type : (typeof rawVal === 'number' && Number.isFinite(rawVal) ? 'number' : 'string');
+      const styleId = isObj && cell.style ? cell.style : (cellType === 'number' ? 4 : (columns[cIdx] && columns[cIdx].align === 'center' ? 3 : 2));
+
+      if (cellType === 'number' && typeof rawVal === 'number' && Number.isFinite(rawVal)) {
+        return `<c r="${ref}" s="${styleId}" t="n"><v>${rawVal}</v></c>`;
+      }
+      const strVal = String(rawVal === null || rawVal === undefined ? '' : rawVal);
+      const lineCount = strVal.split(/\r?\n/).length;
+      if (lineCount > maxLinesInRow) maxLinesInRow = lineCount;
+      return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t xml:space="preserve">${escapeXmlForXlsx(strVal)}</t></is></c>`;
+    }).join('');
+
+    const rowHeight = Math.min(180, Math.max(24, maxLinesInRow * 16 + 6));
+    sheetRowsXml.push(`<row r="${rowNum}" ht="${rowHeight}" customHeight="1">${cellsXml}</row>`);
+  });
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="${escapeXmlForXlsx(safeSheetName)}" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><color rgb="FF0F172A"/><name val="Tahoma"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Tahoma"/></font>
+    <font><b/><sz val="11"/><color rgb="FF0F172A"/><name val="Tahoma"/></font>
+  </fonts>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEFF6FF"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFCBD5E1"/></left>
+      <right style="thin"><color rgb="FFCBD5E1"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="6">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="left" vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="top"/>
+    </xf>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="left" vertical="top" wrapText="1"/>
+    </xf>
+  </cellXfs>
+</styleSheet>`;
+
+  const sheet1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="22"/>
+  <cols>${colsXml}</cols>
+  <sheetData>${sheetRowsXml.join('')}</sheetData>
+</worksheet>`;
+
+  return buildStoreZipBlob([
+    { name: '[Content_Types].xml', content: contentTypesXml },
+    { name: '_rels/.rels', content: rootRelsXml },
+    { name: 'xl/workbook.xml', content: workbookXml },
+    { name: 'xl/_rels/workbook.xml.rels', content: workbookRelsXml },
+    { name: 'xl/styles.xml', content: stylesXml },
+    { name: 'xl/worksheets/sheet1.xml', content: sheet1Xml },
+  ]);
+}
+
+function buildStructuredScoreExportData() {
+  const activeCourse = getActiveCourse();
+  const asg = getActiveAssignmentData();
+  const courseSubject = activeCourse ? activeCourse.subject : 'รายวิชา';
+  const assignTitle = (asg && asg.title) || (activeCourse && activeCourse.assignment) || 'งานที่ตรวจ';
+  const maxScoreDefault = (asg && Number(asg.max_score)) || 20;
+
+  const columns = [
+    { header: 'ลำดับ', width: 7, align: 'center' },
+    { header: 'รหัส/เลขที่', width: 14, align: 'center' },
+    { header: 'ชื่อนักเรียน', width: 24, align: 'left' },
+    { header: 'ชื่อไฟล์งาน', width: 26, align: 'left' },
+    { header: 'ชุดข้อสอบ', width: 13, align: 'center' },
+    { header: 'ชื่อชุดข้อสอบ', width: 28, align: 'left' },
+    { header: 'คะแนนรวม', width: 13, align: 'center' },
+    { header: 'คะแนนเต็ม', width: 12, align: 'center' },
+    { header: 'ระดับคุณภาพ', width: 15, align: 'center' },
+    { header: 'ข้อ 1: รับข้อมูล/ตัวแปร (3)', width: 16, align: 'center' },
+    { header: 'ข้อ 2: Class/Attributes (3)', width: 16, align: 'center' },
+    { header: 'ข้อ 3: Object/Method (3)', width: 16, align: 'center' },
+    { header: 'ข้อ 4: Function/Parameter (3)', width: 16, align: 'center' },
+    { header: 'ข้อ 5: วนซ้ำ/เงื่อนไข (4)', width: 16, align: 'center' },
+    { header: 'ข้อ 6: คำนวณ/แสดงผล (4)', width: 16, align: 'center' },
+    { header: 'คอมเมนต์และคำชี้แจงคะแนนรายข้อ (สำหรับนักเรียน)', width: 62, align: 'left' },
+    { header: 'บันทึกย่อของครู', width: 34, align: 'left' },
+    { header: 'สถานะการตรวจ', width: 15, align: 'center' },
+    { header: 'โอกาสใช้ AI (%)', width: 15, align: 'center' },
+  ];
+
+  const rows = (state.students || []).map((s, index) => {
+    const info = extractStudentIdAndCleanName(s);
+    const ev = s.assignment_evaluation;
+    const rawSet = ((ev && ev.exam_set) || s.confirmed_exam_set || '').toUpperCase();
+    const setMeta = PRACTICAL_EXAM_SETS_META[rawSet] || null;
+    const setLabel = rawSet ? `ชุด ${rawSet}` : '-';
+    const setTitle = setMeta ? setMeta.title : '-';
+
+    const hasScore = Boolean(ev && typeof ev.score === 'number');
+    const scoreCell = hasScore ? { value: Number(ev.score), type: 'number', style: 4 } : { value: '-', type: 'string', style: 3 };
+    const maxCell = hasScore ? { value: Number(ev.max_score || maxScoreDefault), type: 'number', style: 4 } : { value: maxScoreDefault, type: 'number', style: 4 };
+    const qualityVal = hasScore
+      ? String(ev.quality_level || ev.status_label || getExamQualityLevelInfo(ev.score).level).replace(/\s*\(\d+\/\d+\)/g, '')
+      : '-';
+
+    const itemCells = [1, 2, 3, 4, 5, 6].map(itemNum => {
+      const rItem = getStudentRubricScoreByIndex(ev, itemNum);
+      if (rItem && typeof rItem.score === 'number') {
+        return { value: Number(rItem.score), type: 'number', style: 4 };
+      }
+      return { value: '-', type: 'string', style: 3 };
+    });
+
+    const commentText = (s.teacher_comment || (ev ? buildAutoExplanationFromEvaluation(s) : '') || s.note || '').trim();
+    const noteText = (s.note || '').trim();
+    const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
     const aiInfo = s.ai_analysis || (s.local_bundle && s.local_bundle.inspect && s.local_bundle.inspect.ai_analysis);
     const aiScoreText = aiInfo && typeof aiInfo.ai_score === 'number' ? `${aiInfo.ai_score}%` : '-';
 
-    const ev = s.assignment_evaluation;
-    const setCode = (ev && ev.exam_set) ? `ชุด ${ev.exam_set}` : (s.confirmed_exam_set ? `ชุด ${s.confirmed_exam_set}` : '-');
-    const scoreVal = ev && typeof ev.score === 'number' ? String(ev.score) : '-';
-    const maxVal = ev && typeof ev.max_score === 'number' ? String(ev.max_score) : '-';
-    const qualityVal = ev ? String(ev.quality_level || ev.status_label || '-').replace(/\s*\(\d+\/\d+\)/g, '') : '-';
-    const breakdownVal = (ev && Array.isArray(ev.rubric_scores))
-      ? ev.rubric_scores.map(r => `ข้อ${r.id}:${r.score}/${r.max_score}`).join(' | ')
-      : '-';
-    const commentVal = (s.teacher_comment || (ev ? buildAutoExplanationFromEvaluation(s) : '')).replace(/\r?\n/g, ' ; ');
-
-    const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
-    const noteText = s.note || '';
-
     return [
-      index + 1,
-      `"${courseTitle.replace(/"/g, '""')}"`,
-      `"${(s.student_name || '').replace(/"/g, '""')}"`,
-      `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : (s.raw_input || '')).replace(/"/g, '""')}"`,
-      `"${setCode.replace(/"/g, '""')}"`,
-      `"${scoreVal}"`,
-      `"${maxVal}"`,
-      `"${qualityVal.replace(/"/g, '""')}"`,
-      `"${breakdownVal.replace(/"/g, '""')}"`,
-      `"${commentVal.replace(/"/g, '""')}"`,
-      `"${viewedText}"`,
-      `"${noteText.replace(/"/g, '""')}"`,
-      `"${aiScoreText}"`,
-    ].join(',');
+      { value: index + 1, type: 'number', style: 4 },
+      { value: info.studentId || '-', type: 'string', style: 3 },
+      { value: info.displayName, type: 'string', style: 2 },
+      { value: info.fileName, type: 'string', style: 2 },
+      { value: setLabel, type: 'string', style: 3 },
+      { value: setTitle, type: 'string', style: 2 },
+      scoreCell,
+      maxCell,
+      { value: qualityVal, type: 'string', style: 3 },
+      ...itemCells,
+      { value: commentText || '-', type: 'string', style: 2 },
+      { value: noteText || '-', type: 'string', style: 2 },
+      { value: viewedText, type: 'string', style: 3 },
+      { value: aiScoreText, type: 'string', style: 3 },
+    ];
   });
 
-  // UTF-8 BOM (\uFEFF) ensures Excel opens Thai text correctly
-  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  return { courseSubject, assignTitle, columns, rows };
+}
+
+function exportResultsToExcelXlsx() {
+  if (!state.students || state.students.length === 0) {
+    showToast('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้างานก่อน', 'warning');
+    return;
+  }
+
+  const { courseSubject, assignTitle, columns, rows } = buildStructuredScoreExportData();
+  const blob = buildNativeXlsxBlob(assignTitle, columns, rows);
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const safeCourseSlug = courseTitle.replace(/[^a-zA-Z0-9ก-๙_-]+/g, '_');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const safeSlug = `${courseSubject}_${assignTitle}`.replace(/[^a-zA-Z0-9ก-๙_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 65) || 'scores';
   link.setAttribute('href', url);
-  link.setAttribute('download', `report-${safeCourseSlug}-${dateStr}.csv`);
+  link.setAttribute('download', `ตารางคะแนน_${safeSlug}_${dateStr}.xlsx`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+  showToast('📗 ส่งออกไฟล์ Excel (.xlsx แท้) เรียบร้อยแล้ว เปิดใน Excel ได้ทันทีโดยไม่เพี้ยน!', 'success');
+}
+
+async function copyAllScoresAsTsv() {
+  if (!state.students || state.students.length === 0) {
+    showToast('ยังไม่มีรายชื่อนักเรียนให้คัดลอก', 'warning');
+    return;
+  }
+  const { columns, rows } = buildStructuredScoreExportData();
+  const headerLine = columns.map(c => c.header).join('\t');
+  const bodyLines = rows.map(row =>
+    row.map(cell => {
+      const v = cell && typeof cell === 'object' ? cell.value : cell;
+      return String(v === null || v === undefined ? '' : v).replace(/\t/g, ' ').replace(/\r?\n/g, ' | ');
+    }).join('\t')
+  );
+  const tsv = [headerLine, ...bodyLines].join('\n');
+  try {
+    await navigator.clipboard.writeText(tsv);
+    showToast('📋 คัดลอกตารางคะแนนทั้งหมดแล้ว นำไปกด Ctrl+V วางใน Excel หรือ Google Sheets ได้ทันที!', 'success');
+  } catch (e) {
+    showToast('ไม่สามารถคัดลอกตารางอัตโนมัติได้ กรุณากดปุ่มส่งออกไฟล์ Excel (.xlsx)', 'warning');
+  }
+}
+
+function exportResultsToCsv() {
+  if (!state.students || state.students.length === 0) {
+    showToast('ยังไม่มีรายชื่อนักเรียนให้ส่งออก กรุณานำเข้างานก่อน', 'warning');
+    return;
+  }
+
+  const { courseSubject, assignTitle, columns, rows } = buildStructuredScoreExportData();
+  const csvEscape = (val) => {
+    const str = String(val === null || val === undefined ? '' : val);
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const headerLine = columns.map(c => csvEscape(c.header)).join(',');
+  const csvRows = rows.map(row =>
+    row.map((cell, cIdx) => {
+      const raw = cell && typeof cell === 'object' ? cell.value : cell;
+      // สำหรับคอลัมน์รหัสนักเรียนที่มีเลข 0 นำหน้า เช่น 004 ให้คงรูปข้อความชัดเจน
+      if (cIdx === 1 && typeof raw === 'string' && /^0\d+$/.test(raw)) {
+        return csvEscape(`'${raw}`);
+      }
+      return csvEscape(raw);
+    }).join(',')
+  );
+
+  // UTF-8 BOM (\uFEFF) ensures Excel opens Thai text correctly
+  const csvContent = '\uFEFF' + [headerLine, ...csvRows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const safeSlug = `${courseSubject}_${assignTitle}`.replace(/[^a-zA-Z0-9ก-๙_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 65) || 'scores';
+  link.setAttribute('href', url);
+  link.setAttribute('download', `ตารางคะแนน_${safeSlug}_${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('📄 ส่งออกไฟล์ CSV (UTF-8 BOM) เรียบร้อยแล้ว', 'success');
 }
 
 // -------------------------------------------------------------
@@ -4331,6 +5118,7 @@ function updateViewedStats() {
   elements.viewedStatsText.innerText = `ตรวจแล้ว: ${viewedCount} / ${total}`;
   const pct = total > 0 ? (viewedCount / total) * 100 : 0;
   elements.viewedProgressFill.style.width = `${pct}%`;
+  updateScoresMenuBadge();
 }
 
 // -------------------------------------------------------------
@@ -5602,6 +6390,8 @@ function switchTab(tabName) {
   if (tabName === 'inspect') {
     const student = getCurrentStudent();
     if (student) renderInspectTab(student);
+  } else if (tabName === 'scores') {
+    renderScoresMenuTab();
   }
 }
 
@@ -6266,7 +7056,7 @@ function renderInspectTab(student) {
     }
     const btnOpenSummary = evalCard.querySelector('.btn-open-class-summary');
     if (btnOpenSummary) {
-      btnOpenSummary.addEventListener('click', openClassScoreSummaryModal);
+      btnOpenSummary.addEventListener('click', openScoresMenuView);
     }
 
     container.appendChild(evalCard);

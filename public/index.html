@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261120-multikey15">
+  <link rel="stylesheet" href="/static/app.css?v=20261120-scoresmenu16">
 </head>
 
 <body>
@@ -77,6 +77,15 @@
               <span>ตรวจ AI & ข้อสังเกต</span>
               <span id="inspectBadgeCount" class="tab-badge" style="display: none;">0</span>
             </button>
+            <button class="tab-btn" data-tab="scores" title="เมนูดูตารางคะแนนและคอมเมนต์ชี้แจงทั้งหมด (คีย์ลัด 4)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20V10"></path>
+                <path d="M18 20V4"></path>
+                <path d="M6 20v-4"></path>
+              </svg>
+              <span>คะแนน & คอมเมนต์</span>
+              <span id="scoresBadgeCount" class="tab-badge scores-tab-badge" style="display: none;">0</span>
+            </button>
           </div>
 
           <div id="previewToolbar" class="tab-toolbar">
@@ -137,6 +146,16 @@
           <span>โจทย์ & เกณฑ์ตรวจ</span>
         </button>
 
+        <button id="btnOpenScoresMenu" class="btn btn-secondary btn-header-scores"
+          title="เปิดเมนูตารางสรุปคะแนนและคอมเมนต์ชี้แจงนักเรียนทั้งหมด พร้อมส่งออก Excel (.xlsx)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20V10"></path>
+            <path d="M18 20V4"></path>
+            <path d="M6 20v-4"></path>
+          </svg>
+          <span>ตารางคะแนน</span>
+        </button>
+
         <button id="btnOpenInputModal" class="btn btn-primary"
           title="นำเข้าลิงก์ GitHub หรืออัปโหลดไฟล์งานนักเรียน (.py, .ipynb, .zip, .html)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -156,11 +175,11 @@
             <i id="headerAiKeyDot" class="header-ai-dot" aria-hidden="true"></i>
           </button>
           <span class="menu-group-divider"></span>
-          <button id="btnExportCsv" class="menu-group-btn" title="ส่งออกรายงานผลการตรวจและบันทึกเป็นไฟล์ CSV (Excel)">
+          <button id="btnExportCsv" class="menu-group-btn menu-btn-excel" title="ส่งออกตารางคะแนนและคอมเมนต์เป็นไฟล์ Excel (.xlsx) แบบไม่เพี้ยน">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
             </svg>
-            <span>CSV</span>
+            <span>Excel</span>
           </button>
           <span class="menu-group-divider"></span>
           <button id="btnClearAllCache" class="menu-group-btn menu-btn-danger"
@@ -545,6 +564,13 @@
               <!-- Dynamically populated -->
             </div>
           </div>
+
+          <!-- Tab 4: Dedicated Scores & Comments Menu Pane -->
+          <div id="tabScores" class="tab-pane">
+            <div class="scores-menu-container" id="scoresMenuContainer">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -883,10 +909,15 @@ https://github.com/patvikan24-oss/my-profil-013
       <div class="modal-body" id="classSummaryModalBody" style="max-height: 70vh; overflow-y: auto;">
         <!-- Populated dynamically -->
       </div>
-      <div class="modal-footer" style="justify-content: space-between;">
-        <button type="button" id="btnExportCsvFromSummary" class="btn btn-primary btn-sm">
-          📥 ส่งออกไฟล์ Excel (CSV) พร้อมคอมเมนต์รายข้อ
-        </button>
+      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button type="button" id="btnExportCsvFromSummary" class="btn btn-primary btn-sm btn-excel-solid">
+            📗 ส่งออกไฟล์ Excel (.xlsx ไม่เพี้ยน)
+          </button>
+          <button type="button" id="btnExportRawCsvFromSummary" class="btn btn-secondary btn-sm">
+            📄 ส่งออกไฟล์ CSV (UTF-8)
+          </button>
+        </div>
         <button type="button" id="btnDoneClassSummaryModal" class="btn btn-secondary">ปิดหน้าต่าง</button>
       </div>
     </div>
@@ -921,7 +952,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261120-multikey15"></script>
+  <script src="/static/app.js?v=20261120-scoresmenu16"></script>
 </body>
 
 </html>
