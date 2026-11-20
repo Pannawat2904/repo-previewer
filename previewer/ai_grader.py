@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 GEMINI_MODELS = [
     "gemini-2.5-flash",
-    "gemini-1.5-flash",
     "gemini-2.0-flash",
+    "gemini-flash-latest",
 ]
 
 WORK5_PRACTICAL_EXAM_PROMPT = """งานที่ 5 การสอบปฏิบัติ (ข้อสอบชุด A, B, C, D) · แบบประเมินผลการสอบปฏิบัติ (Rubric Score)
@@ -814,7 +814,7 @@ def evaluate_practical_exam_ast(
         "score": total_score,
         "max_score": max_score,
         "status": q["status"],
-        "status_label": f"{q['level']} ({total_score}/{max_score})",
+        "status_label": q["level"],
         "summary": summary,
         "rubric_scores": rubric_scores,
         "checklist": checklist,
@@ -1181,7 +1181,7 @@ AST Syntax Valid: {facts['valid_syntax']} | SyntaxError: {facts['syntax_error']}
                                     "score": total_score,
                                     "max_score": 20,
                                     "status": q["status"],
-                                    "status_label": f"{q['level']} ({total_score}/20)",
+                                    "status_label": q["level"],
                                     "summary": parsed.get("summary") or ast_baseline["summary"],
                                     "rubric_scores": rubric_scores,
                                     "checklist": checklist,

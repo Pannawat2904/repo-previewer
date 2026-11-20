@@ -3393,8 +3393,302 @@ select.form-input {
 }
 
 /* -------------------------------------------------------------
-   Practical Exam 4-Set Selector & Interactive Rubric Scorecard (20 pts)
+   Practical Exam 4-Set Selector & Clean Rubric Table (20 pts)
    ------------------------------------------------------------- */
+.exam-rubric-hero-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(12, 19, 36, 0.95) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.exam-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+  flex: 1;
+}
+
+.exam-hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.exam-set-big-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+}
+
+.exam-hero-name {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.exam-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.exam-total-score-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+}
+
+.exam-total-score-pill.passed {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.exam-total-score-pill.partial {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.exam-total-score-pill.failed {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.exam-total-num {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #f8fafc;
+  line-height: 1;
+}
+
+.exam-total-max {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.rubric-clean-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(10, 15, 29, 0.78);
+}
+
+.rubric-table-head {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.3fr) minmax(260px, 1.6fr) 86px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  background: rgba(30, 41, 59, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rubric-table-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.3fr) minmax(260px, 1.6fr) 86px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.15s ease;
+}
+
+.rubric-table-row:last-child {
+  border-bottom: none;
+}
+
+.rubric-table-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.rubric-row-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rubric-row-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+  font-size: 0.76rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.rubric-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rubric-row-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #f8fafc;
+  line-height: 1.3;
+}
+
+.rubric-row-ev {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.rubric-seg-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+
+.rubric-seg-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  color: #94a3b8;
+  font-family: var(--font-main);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  transition: all 0.15s ease;
+  line-height: 1.15;
+}
+
+.rubric-seg-btn .seg-pt {
+  font-family: var(--font-code);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.rubric-seg-btn .seg-lbl {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.rubric-seg-btn:hover {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #fff;
+}
+
+.rubric-seg-btn.active.lvl-excellent {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(5, 150, 105, 0.42));
+  border-color: #10b981;
+  color: #ecfdf5;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+}
+
+.rubric-seg-btn.active.lvl-good {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.32), rgba(37, 99, 235, 0.42));
+  border-color: #38bdf8;
+  color: #f0f9ff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.rubric-seg-btn.active.lvl-fair {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.32), rgba(217, 119, 6, 0.42));
+  border-color: #f59e0b;
+  color: #fffbeb;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.22);
+}
+
+.rubric-seg-btn.active.lvl-poor {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(185, 28, 28, 0.4));
+  border-color: #ef4444;
+  color: #fef2f2;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.22);
+}
+
+.rubric-row-score-cell {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.rubric-row-score-num {
+  font-family: var(--font-code);
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.rubric-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+@media (max-width: 820px) {
+  .rubric-table-head {
+    display: none;
+  }
+  .rubric-table-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .rubric-row-score-cell {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
 .exam-set-switcher-box {
   background: rgba(15, 23, 42, 0.72);
   border: 1px solid rgba(56, 189, 248, 0.25);

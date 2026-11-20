@@ -2134,7 +2134,7 @@ function updateStudentRubricCriterionScore(student, setCode, criterionId, newSco
   ev.score = total;
   ev.quality_level = q.level;
   ev.status = q.status;
-  ev.status_label = `${q.level} (${total}/20)`;
+  ev.status_label = q.level;
   ev.checklist = ev.rubric_scores.map(r => ({
     criterion: `${r.title} (${r.score}/${r.max_score} คะแนน · ${r.level_label})`,
     passed: r.score >= r.max_score - 1,
@@ -2146,7 +2146,7 @@ function updateStudentRubricCriterionScore(student, setCode, criterionId, newSco
   }));
   const shortBreakdown = ev.rubric_scores.map(r => `ข้อ${r.id}:${r.score}/${r.max_score}`).join(', ');
   ev.suggested_teacher_note = `[ชุด ${setMeta.code}] ${total}/20 คะแนน (${q.level}) | ${shortBreakdown}`;
-  ev.summary = `[${setMeta.fullTitle}] ประเมินตามตาราง Rubric 6 รายการ ได้ ${total}/20 คะแนน (ระดับคุณภาพ: ${q.level})`;
+  ev.summary = `ได้คะแนนรวม ${total}/20 คะแนน (ระดับคุณภาพ: ${q.level})`;
 
   updateAssignmentGradeBadge(student);
   renderStudioPromptPane(student);
@@ -2295,26 +2295,32 @@ function renderStudioPromptPane(student) {
           const lvl = hasScore ? getCriterionLevelInfo(r.score, r.max_score) : { label: `เต็ม ${r.max_score}`, cls: 'lvl-good', cardCls: '' };
           const ptBtns = [];
           for (let p = 0; p <= r.max_score; p++) {
-            ptBtns.push(`<button type="button" class="rubric-pt-btn ${hasScore && Number(r.score) === p ? 'active' : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="คลิกเพื่อให้ ${p}/${r.max_score} คะแนนในหัวข้อนี้">${p}</button>`);
+            const pLvl = getCriterionLevelInfo(p, r.max_score);
+            const shortLbl = (r.max_score === 4 && p === 0) ? 'ไม่มี' : pLvl.label;
+            ptBtns.push(`
+              <button type="button" class="rubric-seg-btn ${hasScore && Number(r.score) === p ? `active ${pLvl.cls}` : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="ให้ ${p}/${r.max_score} คะแนน (${shortLbl})">
+                <span class="seg-pt">${p}</span>
+                <span class="seg-lbl">${shortLbl}</span>
+              </button>
+            `);
           }
+          const cleanTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
           return `
             <div class="rubric-score-card ${lvl.cardCls}">
               <div class="rubric-score-top">
-                <div class="rubric-score-title">${escapeHtml(r.title)}</div>
-                <span class="rubric-score-badge ${lvl.cls}">${hasScore ? `${r.score}/${r.max_score} · ${escapeHtml(lvl.label)}` : `เต็ม ${r.max_score} คะแนน`}</span>
+                <div class="rubric-score-title">${r.id}. ${escapeHtml(cleanTitle)}</div>
+                <span class="rubric-score-badge ${lvl.cls}">${hasScore ? `${r.score}/${r.max_score} · ${escapeHtml(lvl.label)}` : `0/${r.max_score}`}</span>
               </div>
-              <div class="rubric-pt-buttons">
-                <span style="font-size:0.68rem; color:#94a3b8; margin-right:2px;">คะแนน:</span>
+              <div class="rubric-seg-group">
                 ${ptBtns.join('')}
               </div>
-              ${r.evidence ? `<div class="rubric-crit-evidence">🔍 ${escapeHtml(r.evidence)}</div>` : ''}
-              ${r.feedback ? `<div class="rubric-crit-desc">${escapeHtml(r.feedback)}</div>` : ''}
+              ${r.evidence ? `<div class="rubric-crit-evidence">${escapeHtml(r.evidence)}</div>` : ''}
             </div>
           `;
         }).join('')}
       </div>
       <div class="rubric-scale-legend">
-        <span><strong>เกณฑ์รวม 20 คะแนน:</strong></span>
+        <span><strong>เกณฑ์ 20 คะแนน:</strong></span>
         <span style="color:#6ee7b7;">17–20 ดีมาก</span>
         <span style="color:#7dd3fc;">13–16 ดี</span>
         <span style="color:#fcd34d;">9–12 พอใช้</span>
@@ -2421,7 +2427,7 @@ function renderStudioPromptPane(student) {
   });
 
   // Interactive rubric point buttons (0..3 / 0..4)
-  elements.pyPromptBody.querySelectorAll('.rubric-pt-btn').forEach(btn => {
+  elements.pyPromptBody.querySelectorAll('.rubric-pt-btn, .rubric-seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const critId = parseInt(btn.dataset.critId, 10);
       const pt = parseInt(btn.dataset.critPt, 10);
@@ -5311,133 +5317,157 @@ function renderInspectTab(student) {
     evalCard.className = `inspect-card assignment-eval-card ${evalInfo.status || 'passed'}`;
     const isExamEval = Boolean(evalInfo.is_practical_exam && Array.isArray(evalInfo.rubric_scores));
     const examSetCode = evalInfo.exam_set || 'A';
+    const setMeta = PRACTICAL_EXAM_SETS_META[examSetCode] || PRACTICAL_EXAM_SETS_META.A;
     const prefMode = (student && student.preferred_exam_set) ? student.preferred_exam_set : 'AUTO';
+    const qInfo = getExamQualityLevelInfo(evalInfo.score);
+    const cleanStatusWord = String(evalInfo.quality_level || evalInfo.status_label || qInfo.level).replace(/\s*\(\d+\/\d+\)/g, '').trim();
 
-    const examSetBarInInspect = isExamEval ? `
-      <div class="exam-set-switcher-box" style="margin-bottom: 12px;">
-        <div class="exam-set-header-row">
-          <span class="exam-set-label">🧪 ข้อสอบปฏิบัติ: ${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)}</span>
-          <span class="exam-set-active-badge">ชุด ${escapeHtml(examSetCode)} · เต็ม 20 คะแนน</span>
-        </div>
-        <div class="exam-set-pills-row">
-          <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO">🤖 อัตโนมัติ</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A">ชุด A (Product)</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B">ชุด B (DailySales)</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C">ชุด C (StockProduct)</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D">ชุด D (ElectricityRecord)</button>
-        </div>
-      </div>
-    ` : '';
-
-    const rubricChecklistHtml = isExamEval ? `
-      <div class="ai-section-subtitle">📊 ตารางประเมิน Rubric Score (${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)} · คลิกปรับคะแนนรายข้อได้ทันที)</div>
-      <div class="rubric-scorecard-list" style="margin-bottom: 12px;">
-        ${evalInfo.rubric_scores.map(r => {
-          const lvl = getCriterionLevelInfo(r.score, r.max_score);
-          const ptBtns = [];
-          for (let p = 0; p <= r.max_score; p++) {
-            ptBtns.push(`<button type="button" class="rubric-pt-btn ${Number(r.score) === p ? 'active' : ''}" data-crit-id="${r.id}" data-crit-pt="${p}">${p} คะแนน</button>`);
-          }
-          return `
-            <div class="rubric-score-card ${lvl.cardCls}">
-              <div class="rubric-score-top">
-                <div class="rubric-score-title">${escapeHtml(r.title)}</div>
-                <span class="rubric-score-badge ${lvl.cls}">${r.score}/${r.max_score} คะแนน · ${escapeHtml(lvl.label)}</span>
+    if (isExamEval) {
+      evalCard.innerHTML = `
+        <div class="inspect-card-body" style="padding: 16px;">
+          <!-- แถบหัวข้อชุดข้อสอบ + คะแนนรวม + ปุ่มบันทึก ในแถวเดียวอ่านง่าย -->
+          <div class="exam-rubric-hero-bar">
+            <div class="exam-hero-left">
+              <div class="exam-hero-title-row">
+                <span class="exam-set-big-badge">ชุด ${escapeHtml(examSetCode)}</span>
+                <span class="exam-hero-name">${escapeHtml(setMeta.title)}</span>
+                <span class="spec-tag">Class ${escapeHtml(setMeta.className)}</span>
               </div>
-              <div class="rubric-pt-buttons">
-                ${ptBtns.join('')}
+              <div class="exam-set-pills-row" style="max-width: 540px;">
+                <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO">🤖 ตรวจจับอัตโนมัติ</button>
+                <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A">ชุด A · ราคาสินค้า</button>
+                <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B">ชุด B · ยอดขาย</button>
+                <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C">ชุด C · สินค้าคงเหลือ</button>
+                <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D">ชุด D · หน่วยไฟฟ้า</button>
               </div>
-              ${r.evidence ? `<div class="rubric-crit-evidence">🔍 ${escapeHtml(r.evidence)}</div>` : ''}
-              ${r.feedback ? `<div class="rubric-crit-desc">${escapeHtml(r.feedback)}</div>` : ''}
             </div>
-          `;
-        }).join('')}
-      </div>
-    ` : `
-      <div class="ai-section-subtitle">📋 เช็คลิสต์ข้อกำหนดตามโจทย์ (${(evalInfo.checklist || []).filter(c => c.passed).length}/${(evalInfo.checklist || []).length} ข้อ)</div>
-      <div class="rubric-checklist">
-        ${(evalInfo.checklist || []).map(item => `
-          <div class="rubric-item ${item.passed ? 'passed' : 'failed'}">
-            <div class="rubric-item-icon">${item.passed ? '✅' : '❌'}</div>
-            <div class="rubric-item-content">
-              <div class="rubric-item-title">${escapeHtml(item.criterion)}</div>
-              ${item.evidence ? `<div class="rubric-item-evidence">🔍 ${escapeHtml(item.evidence)}</div>` : ''}
-              ${item.feedback ? `<div class="rubric-item-feedback">${escapeHtml(item.feedback)}</div>` : ''}
+
+            <div class="exam-hero-right">
+              <div class="exam-total-score-pill ${evalInfo.status || 'passed'}">
+                <span class="exam-total-num">${evalInfo.score}</span>
+                <span class="exam-total-max">/ ${evalInfo.max_score || 20}</span>
+                <span class="rubric-score-badge ${qInfo.badgeClass}" style="margin-left: 4px; font-size: 0.78rem; padding: 2px 10px;">${escapeHtml(cleanStatusWord)}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button type="button" class="btn btn-primary btn-sm btn-apply-eval-note">
+                  <span>✓ บันทึกคะแนน (${evalInfo.score}/${evalInfo.max_score || 20})</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="ตรวจวิเคราะห์โค้ดใหม่">
+                  <span>🔄 ตรวจซ้ำ</span>
+                </button>
+              </div>
             </div>
           </div>
-        `).join('')}
-      </div>
-    `;
 
-    evalCard.innerHTML = `
-      <div class="inspect-card-header">
-        <div class="inspect-card-title">
-          <span>🎯</span>
-          <span>ผลการตรวจตามโจทย์ & เกณฑ์การให้คะแนน ${isExamEval ? `(${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)})` : '(Assignment Evaluation)'}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="กดเพื่อตรวจซ้ำใหม่">
-            <span>🔄 ตรวจซ้ำ</span>
-          </button>
-          <span class="badge ${evalInfo.status === 'passed' ? 'badge-success' : (evalInfo.status === 'partial' ? 'badge-warning' : 'badge-danger')}">
-            ${escapeHtml(evalInfo.status_label || 'ประเมินแล้ว')} (${evalInfo.score}/${evalInfo.max_score || 10})
-          </span>
-        </div>
-      </div>
-      <div class="inspect-card-body">
-        ${examSetBarInInspect}
-        <div class="eval-overview-grid">
-          <div class="eval-score-box ${evalInfo.status || 'passed'}">
-            <div class="eval-score-num">${evalInfo.score}</div>
-            <div class="eval-score-max">เต็ม ${evalInfo.max_score || 10} คะแนน</div>
-            <div class="eval-score-label badge ${evalInfo.status === 'passed' ? 'badge-success' : (evalInfo.status === 'partial' ? 'badge-warning' : 'badge-danger')}">${escapeHtml(evalInfo.status_label || '')}</div>
-          </div>
-          <div class="eval-summary-col">
-            <p class="eval-summary-text">${escapeHtml(evalInfo.summary || '')}</p>
-            <div class="eval-note-action-row">
-              <span class="eval-note-preview">📝 ${escapeHtml(evalInfo.suggested_teacher_note || '')}</span>
-              <button type="button" class="btn btn-primary btn-sm btn-apply-eval-note">
-                <span>บันทึกลงช่องคะแนน</span>
-              </button>
+          <!-- ตาราง Rubric 6 ข้อ แบบคลีน ดูครบในหน้าเดียว -->
+          <div class="rubric-clean-table">
+            <div class="rubric-table-head">
+              <div>รายการประเมิน (6 หัวข้อ)</div>
+              <div>คลิกเลือกระดับคะแนนรายข้อ</div>
+              <div style="text-align:right;">คะแนนที่ได้</div>
             </div>
-            ${evalInfo.mode === 'gemini_ai' ? `<span style="font-size:0.78rem; color:#38bdf8;">🤖 ตรวจสอบด้วย Gemini AI (${escapeHtml(evalInfo.model_used || 'Gemini Flash')})</span>` : (evalInfo.mode === 'manual_rubric' ? '<span style="font-size:0.78rem; color:#6ee7b7;">✍️ ปรับคะแนนตามตาราง Rubric โดยครูผู้สอน</span>' : '<span style="font-size:0.78rem; color:#94a3b8;">⚙️ ตรวจสอบโครงสร้างด้วย AST Heuristics</span>')}
-            ${evalInfo.api_warning ? `<div style="font-size:0.78rem; color:#f59e0b; margin-top:2px;">⚠️ ${escapeHtml(evalInfo.api_warning)}</div>` : ''}
-          </div>
-        </div>
-
-        ${rubricChecklistHtml}
-
-        ${((evalInfo.strengths && evalInfo.strengths.length > 0) || (evalInfo.suggestions && evalInfo.suggestions.length > 0)) ? `
-          <div class="strengths-suggestions-grid">
-            ${(evalInfo.strengths && evalInfo.strengths.length > 0) ? `
-              <div class="feedback-sub-box">
-                <div class="feedback-sub-title" style="color:#22c55e;">
-                  <span>🌟 จุดเด่นของงานนี้</span>
+            ${evalInfo.rubric_scores.map(r => {
+              const lvl = getCriterionLevelInfo(r.score, r.max_score);
+              const cleanTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
+              const segBtns = [];
+              for (let p = 0; p <= r.max_score; p++) {
+                const pLvl = getCriterionLevelInfo(p, r.max_score);
+                const shortLbl = (r.max_score === 4 && p === 0) ? 'ไม่มี' : pLvl.label;
+                segBtns.push(`
+                  <button type="button" class="rubric-seg-btn ${Number(r.score) === p ? `active ${pLvl.cls}` : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="คลิกเพื่อให้ ${p}/${r.max_score} คะแนน (${shortLbl})">
+                    <span class="seg-pt">${p}</span>
+                    <span class="seg-lbl">${shortLbl}</span>
+                  </button>
+                `);
+              }
+              return `
+                <div class="rubric-table-row">
+                  <div class="rubric-row-info">
+                    <span class="rubric-row-num">${r.id}</span>
+                    <div class="rubric-row-text">
+                      <div class="rubric-row-title">${escapeHtml(cleanTitle)}</div>
+                      <div class="rubric-row-ev">${escapeHtml(r.evidence || r.feedback || '')}</div>
+                    </div>
+                  </div>
+                  <div class="rubric-seg-group">
+                    ${segBtns.join('')}
+                  </div>
+                  <div class="rubric-row-score-cell">
+                    <span class="rubric-row-score-num">${r.score} / ${r.max_score}</span>
+                    <span class="rubric-score-badge ${lvl.cls}">${escapeHtml(lvl.label)}</span>
+                  </div>
                 </div>
-                <ul class="feedback-sub-list">
-                  ${evalInfo.strengths.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
-                </ul>
+              `;
+            }).join('')}
+            <div class="rubric-table-footer">
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:0.76rem; color:#94a3b8;">
+                <span><strong>เกณฑ์ระดับคุณภาพ:</strong></span>
+                <span style="color:#6ee7b7;">● 17–20 ดีมาก</span>
+                <span style="color:#7dd3fc;">● 13–16 ดี</span>
+                <span style="color:#fcd34d;">● 9–12 พอใช้</span>
+                <span style="color:#fca5a5;">● 0–8 ปรับปรุง</span>
               </div>
-            ` : ''}
-            ${(evalInfo.suggestions && evalInfo.suggestions.length > 0) ? `
-              <div class="feedback-sub-box">
-                <div class="feedback-sub-title" style="color:#f59e0b;">
-                  <span>💡 ข้อเสนอแนะ / ปรับปรุง</span>
-                </div>
-                <ul class="feedback-sub-list">
-                  ${evalInfo.suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
-                </ul>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:0.84rem; color:#e2e8f0;">รวมคะแนนที่ได้: <strong style="font-size:1rem; color:#fff;">${evalInfo.score} / ${evalInfo.max_score || 20}</strong> (${escapeHtml(cleanStatusWord)})</span>
               </div>
-            ` : ''}
+            </div>
           </div>
-        ` : ''}
-      </div>
-    `;
+        </div>
+      `;
+    } else {
+      evalCard.innerHTML = `
+        <div class="inspect-card-header">
+          <div class="inspect-card-title">
+            <span>🎯</span>
+            <span>ผลการตรวจตามโจทย์ & เกณฑ์การให้คะแนน</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="กดเพื่อตรวจซ้ำใหม่">
+              <span>🔄 ตรวจซ้ำ</span>
+            </button>
+            <span class="badge ${evalInfo.status === 'passed' ? 'badge-success' : (evalInfo.status === 'partial' ? 'badge-warning' : 'badge-danger')}">
+              ${escapeHtml(cleanStatusWord)} (${evalInfo.score}/${evalInfo.max_score || 10})
+            </span>
+          </div>
+        </div>
+        <div class="inspect-card-body">
+          <div class="eval-overview-grid">
+            <div class="eval-score-box ${evalInfo.status || 'passed'}">
+              <div class="eval-score-num">${evalInfo.score}</div>
+              <div class="eval-score-max">เต็ม ${evalInfo.max_score || 10} คะแนน</div>
+              <div class="eval-score-label badge ${evalInfo.status === 'passed' ? 'badge-success' : (evalInfo.status === 'partial' ? 'badge-warning' : 'badge-danger')}">${escapeHtml(cleanStatusWord)}</div>
+            </div>
+            <div class="eval-summary-col">
+              <p class="eval-summary-text">${escapeHtml(evalInfo.summary || '')}</p>
+              <div class="eval-note-action-row">
+                <span class="eval-note-preview">📝 ${escapeHtml(evalInfo.suggested_teacher_note || '')}</span>
+                <button type="button" class="btn btn-primary btn-sm btn-apply-eval-note">
+                  <span>บันทึกลงช่องคะแนน</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
-    const btnApply = evalCard.querySelector('.btn-apply-eval-note');
-    if (btnApply) {
-      btnApply.addEventListener('click', () => applyEvaluationNote(student));
+          <div class="ai-section-subtitle">📋 เช็คลิสต์ข้อกำหนดตามโจทย์ (${(evalInfo.checklist || []).filter(c => c.passed).length}/${(evalInfo.checklist || []).length} ข้อ)</div>
+          <div class="rubric-checklist">
+            ${(evalInfo.checklist || []).map(item => `
+              <div class="rubric-item ${item.passed ? 'passed' : 'failed'}">
+                <div class="rubric-item-icon">${item.passed ? '✅' : '❌'}</div>
+                <div class="rubric-item-content">
+                  <div class="rubric-item-title">${escapeHtml(item.criterion)}</div>
+                  ${item.evidence ? `<div class="rubric-item-evidence">🔍 ${escapeHtml(item.evidence)}</div>` : ''}
+                  ${item.feedback ? `<div class="rubric-item-feedback">${escapeHtml(item.feedback)}</div>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
     }
+
+    evalCard.querySelectorAll('.btn-apply-eval-note').forEach(btnApply => {
+      btnApply.addEventListener('click', () => applyEvaluationNote(student));
+    });
     const btnRegrade = evalCard.querySelector('.btn-regrade-student');
     if (btnRegrade) {
       btnRegrade.addEventListener('click', () => gradeCurrentStudentAgainstAssignment(student));
@@ -5449,7 +5479,7 @@ function renderInspectTab(student) {
         gradeCurrentStudentAgainstAssignment(student, (chosen === 'AUTO') ? null : chosen);
       });
     });
-    evalCard.querySelectorAll('.rubric-pt-btn').forEach(btn => {
+    evalCard.querySelectorAll('.rubric-pt-btn, .rubric-seg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const critId = parseInt(btn.dataset.critId, 10);
         const pt = parseInt(btn.dataset.critPt, 10);
