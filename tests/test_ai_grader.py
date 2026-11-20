@@ -4,7 +4,14 @@ import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import patch
-from previewer.ai_grader import evaluate_with_ast_fallback, parse_prompt_specs, resolve_gemini_api_key
+from previewer.ai_grader import (
+    WORK5_PRACTICAL_EXAM_PROMPT,
+    detect_practical_exam_set,
+    evaluate_practical_exam_ast,
+    evaluate_with_ast_fallback,
+    parse_prompt_specs,
+    resolve_gemini_api_key,
+)
 import previewer.storage as storage
 from previewer.storage import (
     DEFAULT_ASSIGNMENT_PROMPT,
@@ -315,6 +322,102 @@ class Product
             status_env = client.get("/api/settings/gemini-key").json()
             self.assertTrue(status_env["configured"])
             self.assertEqual(status_env["source"], "env")
+
+    def test_practical_exam_4_sets_rubric_20_points(self):
+        from fastapi.testclient import TestClient
+        import app as main_app
+
+        # 1) ทดสอบตรวจจับชุดข้อสอบอัตโนมัติ (ชุด B: DailySales แบบของนักเรียน benjawan_020 ที่มี SyntaxError บางบรรทัด)
+        benjawan_code = '''
+print("=====DailySales=====")
+show_info = int(input("แสดงข้อมูลยอดขายสูงสุด (จำนวน3วัน):"))
+check_sales = int(input("แสดงข้อมูลยอดขายทั่วไป (จำนวน3วัน):"))
+if (show_info < 0 or show_info > 5000 or)
+check_sales < 5000 or check_sales > 0
+print("แสดงยอดขายที่ถูกต้องจำนวน3วัน")
+elif:
+DailySales = show_info + check_sales
+print("จำนวนยอดขายทั้งหมดจำนวน3วัน")
+'''
+        self.assertEqual(detect_practical_exam_set(benjawan_code, "benjawan_020.py"), "B")
+        res_b_partial = evaluate_with_ast_fallback(
+            WORK5_PRACTICAL_EXAM_PROMPT,
+            benjawan_code,
+            student_name="benjawan_020",
+            filename="benjawan_020.py",
+            assignment_id="work-5",
+        )
+        self.assertTrue(res_b_partial["is_practical_exam"])
+        self.assertEqual(res_b_partial["exam_set"], "B")
+        self.assertEqual(res_b_partial["max_score"], 20)
+        self.assertEqual(len(res_b_partial["rubric_scores"]), 6)
+        # ต้องได้คะแนนบางส่วนจากรายการที่ 1 (input/ตัวแปร), รายการที่ 5 (if/elif) และรายการที่ 6 (คำนวณ/print) แม้ติด SyntaxError
+        self.assertGreater(res_b_partial["score"], 0)
+        self.assertIn("[ชุด B]", res_b_partial["suggested_teacher_note"])
+
+        # 2) ทดสอบโค้ดชุด D (ElectricityRecord) ที่เขียนครบทั้ง 6 รายการ -> ได้คะแนนระดับ "ดีมาก" (17-20/20)
+        set_d_full_code = '''
+class ElectricityRecord:
+    def __init__(self, house_name, prev_meter, curr_meter):
+        self.house_name = house_name
+        self.prev_meter = prev_meter
+        self.curr_meter = curr_meter
+
+    def show_meter(self):
+        print(self.house_name, self.prev_meter, self.curr_meter)
+
+def evaluate_units(units):
+    if units > 100:
+        return "ใช้ไฟสูง"
+    else:
+        return "ปกติ"
+
+total_units = 0
+count = 0
+while count < 3:
+    h = input("ชื่อบ้าน: ")
+    old_m = int(input("เลขมิเตอร์ครั้งก่อน: "))
+    new_m = int(input("เลขมิเตอร์ครั้งนี้: "))
+    rec = ElectricityRecord(h, old_m, new_m)
+    rec.show_meter()
+    u = new_m - old_m
+    if u >= 0:
+        total_units += u
+    else:
+        u = 0
+    status = evaluate_units(u)
+    print("สถานะ:", status)
+    count += 1
+
+print("รวมหน่วยไฟฟ้าทั้ง 3 หลัง:", total_units)
+'''
+        self.assertEqual(detect_practical_exam_set(set_d_full_code, "student_d.py"), "D")
+        res_d = evaluate_practical_exam_ast(set_d_full_code, exam_set="D")
+        self.assertEqual(res_d["exam_set"], "D")
+        self.assertEqual(res_d["max_score"], 20)
+        self.assertGreaterEqual(res_d["score"], 17)
+        self.assertEqual(res_d["quality_level"], "ดีมาก")
+
+        # 3) ทดสอบผ่าน HTTP POST /api/assignment/grade พร้อมระบุ exam_set="C" (StockProduct)
+        client = TestClient(main_app.app)
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            resp = client.post(
+                "/api/assignment/grade",
+                json={
+                    "course_id": "course-python-oop-1",
+                    "assignment_id": "work-5",
+                    "code": benjawan_code,
+                    "filename": "benjawan_020.py",
+                    "prompt": WORK5_PRACTICAL_EXAM_PROMPT,
+                    "student_name": "benjawan_020",
+                    "exam_set": "C",
+                },
+            )
+            self.assertEqual(resp.status_code, 200)
+            body = resp.json()
+            self.assertEqual(body["exam_set"], "C")
+            self.assertEqual(body["max_score"], 20)
+            self.assertEqual(len(body["rubric_scores"]), 6)
 
 
 if __name__ == "__main__":

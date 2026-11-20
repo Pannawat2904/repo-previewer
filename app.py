@@ -212,6 +212,7 @@ class AssignmentGradeRequest(BaseModel):
     prompt: Optional[str] = None
     api_key: Optional[str] = None
     student_name: Optional[str] = None
+    exam_set: Optional[str] = None
 
 
 class GeminiKeyRequest(BaseModel):
@@ -433,6 +434,8 @@ async def api_grade_assignment(req: AssignmentGradeRequest):
         api_key=req.api_key,
         student_name=req.student_name or (f"{req.owner}/{req.repo}" if req.owner and req.repo else "นักเรียน"),
         filename=resolved_filename,
+        exam_set=req.exam_set,
+        assignment_id=req.assignment_id or "",
     )
     return result
 

@@ -148,6 +148,7 @@ const elements = {
   modalAssignmentCourseLabel: document.getElementById('modalAssignmentCourseLabel'),
   assignmentTitleInput: document.getElementById('assignmentTitleInput'),
   assignmentPromptTextarea: document.getElementById('assignmentPromptTextarea'),
+  btnLoadExam5Prompt: document.getElementById('btnLoadExam5Prompt'),
   btnLoadExamplePrompt: document.getElementById('btnLoadExamplePrompt'),
   btnClearPrompt: document.getElementById('btnClearPrompt'),
   geminiApiKeyInput: document.getElementById('geminiApiKeyInput'),
@@ -317,8 +318,11 @@ async function initCoursesState() {
 
   // ดึงโจทย์และเกณฑ์ตรวจล่าสุดของทุกวิชาจากเซิร์ฟเวอร์แบบเบื้องหลัง
   for (const c of state.courses) {
-    fetchCourseAssignments(c.id);
+    await fetchCourseAssignments(c.id);
   }
+
+  // อัปเกรด/เพิ่ม "งานที่ 5 สอบปฏิบัติ (ข้อสอบชุด A, B, C, D — Rubric 20 คะแนน)" ให้วิชา Python OOP อัตโนมัติโดยไม่กระทบงาน 1-4
+  await ensureWork5PracticalExamRubric();
 
   // ตรวจสอบ/ซิงก์ Gemini API Key กลางทั้งระบบตั้งแต่เปิดหน้าแรก
   checkGeminiKeyStatus();
@@ -744,6 +748,9 @@ function setupEventListeners() {
   }
   if (elements.btnSaveAssignment) {
     elements.btnSaveAssignment.addEventListener('click', handleSaveAssignment);
+  }
+  if (elements.btnLoadExam5Prompt) {
+    elements.btnLoadExam5Prompt.addEventListener('click', loadExam5PracticalRubricPrompt);
   }
   if (elements.btnLoadExamplePrompt) {
     elements.btnLoadExamplePrompt.addEventListener('click', loadExampleProductPrompt);
@@ -1552,6 +1559,258 @@ function closeAssignmentModal() {
   }
 }
 
+const WORK5_PRACTICAL_EXAM_TITLE = 'งานที่ 5 สอบปฏิบัติ (ข้อสอบชุด A, B, C, D · Rubric 20 คะแนน)';
+
+const WORK5_PRACTICAL_EXAM_PROMPT = `งานที่ 5 การสอบปฏิบัติ (ข้อสอบชุด A, B, C, D) · แบบประเมินผลการสอบปฏิบัติ (Rubric Score)
+รายวิชา การเขียนโปรแกรมเชิงวัตถุเบื้องต้น · รหัสวิชา 21910-2011 · คะแนนเต็ม 20 คะแนน
+
+ข้อสอบปฏิบัติมี 4 ชุด (ระบบตรวจวิเคราะห์ชุดข้อสอบให้อัตโนมัติ หรือครูสามารถคลิกเลือกชุด A / B / C / D ได้ทันที):
+
+• [ชุด A] โปรแกรมคำนวณราคาสินค้า (คะแนนเต็ม 20 คะแนน)
+  1. การรับข้อมูลและกำหนดตัวแปร (3 คะแนน): รับข้อมูลชื่อสินค้า ราคา และจำนวนสินค้าได้ครบถ้วน กำหนดตัวแปรและแปลงชนิดข้อมูลถูกต้อง
+  2. การสร้าง Class และ Attributes (3 คะแนน): สร้าง Class Product และกำหนด Attributes ได้ครบทั้ง 3 รายการ (name, price, quantity)
+  3. การสร้าง Object และ Method (3 คะแนน): สร้าง Object และเรียกใช้ Method แสดงรายละเอียดสินค้าได้ถูกต้อง
+  4. การสร้าง Function และ Parameter (3 คะแนน): สร้าง Function รับ Parameter และส่งค่าผลการประเมินกลับได้ถูกต้อง
+  5. การใช้คำสั่งวนซ้ำและเงื่อนไข (4 คะแนน): ใช้ for, range() และ if-else ได้ถูกต้อง วนรับข้อมูลครบ 3 รายการ
+  6. การคำนวณและแสดงผลลัพธ์ (4 คะแนน): คำนวณราคาสินค้า สะสมยอดรวม และแสดงผลสรุปได้ถูกต้องครบถ้วน
+
+• [ชุด B] โปรแกรมบันทึกยอดขายประจำวัน (คะแนนเต็ม 20 คะแนน)
+  1. การรับข้อมูลและกำหนดตัวแปร (3 คะแนน): รับข้อมูลยอดขายและกำหนดตัวแปรได้ถูกต้องครบถ้วน
+  2. การสร้าง Class และ Attributes (3 คะแนน): สร้าง Class DailySales และกำหนด Attributes ได้แก่ day และ sales ได้ถูกต้อง
+  3. การสร้าง Object และ Method (3 คะแนน): สร้าง Object และเรียกใช้ Method แสดงข้อมูลยอดขายได้ถูกต้อง
+  4. การสร้าง Function และ Parameter (3 คะแนน): สร้าง Function รับยอดขายผ่าน Parameter และส่งผลการประเมินกลับได้ถูกต้อง
+  5. การใช้คำสั่งวนซ้ำและเงื่อนไข (4 คะแนน): ใช้ while และ if-else ได้ถูกต้อง วนรับข้อมูลครบ 3 วันและสิ้นสุดการทำงานได้
+  6. การสะสมยอดขายและแสดงผลลัพธ์ (4 คะแนน): สะสมยอดขายทั้ง 3 วันและแสดงยอดขายรวมได้ถูกต้อง
+
+• [ชุด C] โปรแกรมตรวจสอบสินค้าคงเหลือ (คะแนนเต็ม 20 คะแนน)
+  1. การรับข้อมูลและกำหนดตัวแปร (3 คะแนน): รับข้อมูลชื่อสินค้าและจำนวนสินค้าคงเหลือได้ครบถ้วน กำหนดตัวแปรและชนิดข้อมูลถูกต้อง
+  2. การสร้าง Class และ Attributes (3 คะแนน): สร้าง Class StockProduct และกำหนด Attributes ได้แก่ name และ quantity ได้ถูกต้อง
+  3. การสร้าง Object และ Method (3 คะแนน): สร้าง Object และเรียกใช้ Method แสดงรายละเอียดสินค้าได้ถูกต้อง
+  4. การสร้าง Function และ Parameter (3 คะแนน): สร้าง Function รับจำนวนสินค้าผ่าน Parameter และส่งสถานะสินค้ากลับได้ถูกต้อง
+  5. การใช้คำสั่งวนซ้ำและเงื่อนไข (4 คะแนน): ใช้ for, range() และ if-else ได้ถูกต้อง วนตรวจสอบสินค้าครบ 3 รายการ
+  6. การตรวจสอบสถานะและแสดงผลลัพธ์ (4 คะแนน): ตรวจสอบสถานะสินค้า สะสมจำนวนสินค้าคงเหลือ และแสดงผลรวมได้ถูกต้อง
+
+• [ชุด D] โปรแกรมคำนวณหน่วยไฟฟ้า (คะแนนเต็ม 20 คะแนน)
+  1. การรับข้อมูลและกำหนดตัวแปร (3 คะแนน): รับข้อมูลชื่อบ้านและเลขมิเตอร์ทั้งสองค่าได้ครบถ้วน กำหนดตัวแปรและแปลงชนิดข้อมูลถูกต้อง
+  2. การสร้าง Class และ Attributes (3 คะแนน): สร้าง Class ElectricityRecord และกำหนด Attributes ครบทั้ง 3 รายการ
+  3. การสร้าง Object และ Method (3 คะแนน): สร้าง Object และเรียกใช้ Method แสดงข้อมูลมิเตอร์ได้ถูกต้อง
+  4. การสร้าง Function และ Parameter (3 คะแนน): สร้าง Function รับจำนวนหน่วยไฟฟ้าผ่าน Parameter และส่งผลการประเมินกลับได้ถูกต้อง
+  5. การใช้คำสั่งวนซ้ำและเงื่อนไข (4 คะแนน): ใช้ while และ if-else ได้ถูกต้อง วนรับข้อมูลบ้านครบ 3 หลังและสิ้นสุดการทำงานได้
+  6. การคำนวณหน่วยไฟฟ้าและแสดงผลลัพธ์ (4 คะแนน): คำนวณหน่วยไฟฟ้าทั้ง 3 หลัง สะสมหน่วยไฟฟ้า และแสดงผลรวมได้ถูกต้อง
+
+เกณฑ์การแปลผลคะแนนรวม (ใช้ร่วมกันทุกชุดข้อสอบ A–D · คะแนนเต็ม 20 คะแนน):
+• 17 – 20 คะแนน = ดีมาก
+• 13 – 16 คะแนน = ดี
+• 9 – 12 คะแนน = พอใช้
+• 0 – 8 คะแนน = ปรับปรุง`;
+
+const PRACTICAL_EXAM_SETS_META = {
+  A: {
+    code: 'A',
+    title: 'โปรแกรมคำนวณราคาสินค้า',
+    fullTitle: 'ชุด A · โปรแกรมคำนวณราคาสินค้า',
+    className: 'Product',
+    attrs: 'name, price, quantity (3 รายการ)',
+    loop: 'for, range() และ if-else (ครบ 3 รายการ)',
+    criteria: [
+      { id: 1, title: '1. การรับข้อมูลและกำหนดตัวแปร', max_score: 3, desc: 'รับชื่อสินค้า ราคา และจำนวนสินค้า กำหนดตัวแปรและแปลงชนิดข้อมูลถูกต้อง' },
+      { id: 2, title: '2. การสร้าง Class และ Attributes', max_score: 3, desc: 'สร้าง Class Product และกำหนด Attributes ครบทั้ง 3 รายการ' },
+      { id: 3, title: '3. การสร้าง Object และ Method', max_score: 3, desc: 'สร้าง Object และเรียกใช้ Method แสดงรายละเอียดสินค้าได้ถูกต้อง' },
+      { id: 4, title: '4. การสร้าง Function และ Parameter', max_score: 3, desc: 'สร้าง Function รับ Parameter และส่งค่าผลการประเมินกลับได้ถูกต้อง' },
+      { id: 5, title: '5. การใช้คำสั่งวนซ้ำและเงื่อนไข', max_score: 4, desc: 'ใช้ for, range() และ if-else ได้ถูกต้อง วนรับข้อมูลครบ 3 รายการ' },
+      { id: 6, title: '6. การคำนวณและแสดงผลลัพธ์', max_score: 4, desc: 'คำนวณราคาสินค้า สะสมยอดรวม และแสดงผลสรุปได้ถูกต้องครบถ้วน' },
+    ],
+  },
+  B: {
+    code: 'B',
+    title: 'โปรแกรมบันทึกยอดขายประจำวัน',
+    fullTitle: 'ชุด B · โปรแกรมบันทึกยอดขายประจำวัน',
+    className: 'DailySales',
+    attrs: 'day, sales (2 รายการ)',
+    loop: 'while และ if-else (ครบ 3 วัน)',
+    criteria: [
+      { id: 1, title: '1. การรับข้อมูลและกำหนดตัวแปร', max_score: 3, desc: 'รับข้อมูลยอดขายและกำหนดตัวแปรได้ถูกต้องครบถ้วน' },
+      { id: 2, title: '2. การสร้าง Class และ Attributes', max_score: 3, desc: 'สร้าง Class DailySales และกำหนด Attributes ได้แก่ day และ sales ได้ถูกต้อง' },
+      { id: 3, title: '3. การสร้าง Object และ Method', max_score: 3, desc: 'สร้าง Object และเรียกใช้ Method แสดงข้อมูลยอดขายได้ถูกต้อง' },
+      { id: 4, title: '4. การสร้าง Function และ Parameter', max_score: 3, desc: 'สร้าง Function รับยอดขายผ่าน Parameter และส่งผลการประเมินกลับได้ถูกต้อง' },
+      { id: 5, title: '5. การใช้คำสั่งวนซ้ำและเงื่อนไข', max_score: 4, desc: 'ใช้ while และ if-else ได้ถูกต้อง วนรับข้อมูลครบ 3 วันและสิ้นสุดการทำงานได้' },
+      { id: 6, title: '6. การสะสมยอดขายและแสดงผลลัพธ์', max_score: 4, desc: 'สะสมยอดขายทั้ง 3 วันและแสดงยอดขายรวมได้ถูกต้อง' },
+    ],
+  },
+  C: {
+    code: 'C',
+    title: 'โปรแกรมตรวจสอบสินค้าคงเหลือ',
+    fullTitle: 'ชุด C · โปรแกรมตรวจสอบสินค้าคงเหลือ',
+    className: 'StockProduct',
+    attrs: 'name, quantity (2 รายการ)',
+    loop: 'for, range() และ if-else (ครบ 3 รายการ)',
+    criteria: [
+      { id: 1, title: '1. การรับข้อมูลและกำหนดตัวแปร', max_score: 3, desc: 'รับชื่อสินค้าและจำนวนสินค้าคงเหลือ กำหนดตัวแปรและชนิดข้อมูลถูกต้อง' },
+      { id: 2, title: '2. การสร้าง Class และ Attributes', max_score: 3, desc: 'สร้าง Class StockProduct และกำหนด Attributes ได้แก่ name และ quantity ได้ถูกต้อง' },
+      { id: 3, title: '3. การสร้าง Object และ Method', max_score: 3, desc: 'สร้าง Object และเรียกใช้ Method แสดงรายละเอียดสินค้าได้ถูกต้อง' },
+      { id: 4, title: '4. การสร้าง Function และ Parameter', max_score: 3, desc: 'สร้าง Function รับจำนวนสินค้าผ่าน Parameter และส่งสถานะสินค้ากลับได้ถูกต้อง' },
+      { id: 5, title: '5. การใช้คำสั่งวนซ้ำและเงื่อนไข', max_score: 4, desc: 'ใช้ for, range() และ if-else ได้ถูกต้อง วนตรวจสอบสินค้าครบ 3 รายการ' },
+      { id: 6, title: '6. การตรวจสอบสถานะและแสดงผลลัพธ์', max_score: 4, desc: 'ตรวจสอบสถานะสินค้า สะสมจำนวนสินค้าคงเหลือ และแสดงผลรวมได้ถูกต้อง' },
+    ],
+  },
+  D: {
+    code: 'D',
+    title: 'โปรแกรมคำนวณหน่วยไฟฟ้า',
+    fullTitle: 'ชุด D · โปรแกรมคำนวณหน่วยไฟฟ้า',
+    className: 'ElectricityRecord',
+    attrs: 'ชื่อบ้านและเลขมิเตอร์ (ครบ 3 รายการ)',
+    loop: 'while และ if-else (ครบ 3 หลัง)',
+    criteria: [
+      { id: 1, title: '1. การรับข้อมูลและกำหนดตัวแปร', max_score: 3, desc: 'รับข้อมูลชื่อบ้านและเลขมิเตอร์ทั้งสองค่า กำหนดตัวแปรและแปลงชนิดข้อมูลถูกต้อง' },
+      { id: 2, title: '2. การสร้าง Class และ Attributes', max_score: 3, desc: 'สร้าง Class ElectricityRecord และกำหนด Attributes ครบทั้ง 3 รายการ' },
+      { id: 3, title: '3. การสร้าง Object และ Method', max_score: 3, desc: 'สร้าง Object และเรียกใช้ Method แสดงข้อมูลมิเตอร์ได้ถูกต้อง' },
+      { id: 4, title: '4. การสร้าง Function และ Parameter', max_score: 3, desc: 'สร้าง Function รับจำนวนหน่วยไฟฟ้าผ่าน Parameter และส่งผลการประเมินกลับได้ถูกต้อง' },
+      { id: 5, title: '5. การใช้คำสั่งวนซ้ำและเงื่อนไข', max_score: 4, desc: 'ใช้ while และ if-else ได้ถูกต้อง วนรับข้อมูลบ้านครบ 3 หลังและสิ้นสุดการทำงานได้' },
+      { id: 6, title: '6. การคำนวณหน่วยไฟฟ้าและแสดงผลลัพธ์', max_score: 4, desc: 'คำนวณหน่วยไฟฟ้าทั้ง 3 หลัง สะสมหน่วยไฟฟ้า และแสดงผลรวมได้ถูกต้อง' },
+    ],
+  },
+};
+
+function isPracticalExamAssignment(asg) {
+  if (!asg) return false;
+  const id = String(asg.id || '').toLowerCase();
+  const title = String(asg.title || '').toLowerCase();
+  const prompt = String(asg.prompt || '').toLowerCase();
+  if (id === 'work-5' || /^งานที่\s*5\b/.test(title) || title.includes('สอบปฏิบัติ')) return true;
+  if (Number(asg.max_score) === 20) return true;
+  const signals = ['ชุด a', 'ชุด b', 'ชุด c', 'ชุด d', 'สอบปฏิบัติ', 'rubric score', 'dailysales', 'stockproduct', 'electricityrecord'];
+  return signals.filter(s => prompt.includes(s)).length >= 2;
+}
+
+function detectClientPracticalExamSet(code, filename = '', studentName = '', preferredSet = null) {
+  if (preferredSet && PRACTICAL_EXAM_SETS_META[preferredSet.toUpperCase()]) {
+    return preferredSet.toUpperCase();
+  }
+  const combined = `${filename}\n${studentName}\n${code || ''}`.toLowerCase();
+  const explicit = combined.match(/(?:ชุดข้อสอบ|ชุดที่|ข้อสอบชุด|ชุด|set)\s*[:#\-_]?\s*([abcd])\b/i);
+  if (explicit) return explicit[1].toUpperCase();
+
+  const scores = { A: 0, B: 0, C: 0, D: 0 };
+  [['dailysales', 6], ['daily_sales', 5], ['check_sales', 4], ['ยอดขาย', 4], ['sales', 2], ['จำนวน3วัน', 3]].forEach(([k, w]) => {
+    if (combined.includes(k)) scores.B += w;
+  });
+  [['stockproduct', 6], ['stock_product', 5], ['check_stock', 4], ['คงเหลือ', 4], ['สถานะสินค้า', 4], ['stock', 3]].forEach(([k, w]) => {
+    if (combined.includes(k)) scores.C += w;
+  });
+  [['electricityrecord', 6], ['electricity', 5], ['meter', 3], ['มิเตอร์', 4], ['หน่วยไฟฟ้า', 5], ['ไฟฟ้า', 3], ['ชื่อบ้าน', 4]].forEach(([k, w]) => {
+    if (combined.includes(k)) scores.D += w;
+  });
+  [['class product', 6], ['ราคาสินค้า', 4], ['total_price', 3], ['price', 2], ['คำนวณราคา', 4]].forEach(([k, w]) => {
+    if (combined.includes(k)) scores.A += w;
+  });
+
+  let best = 'A';
+  ['A', 'B', 'C', 'D'].forEach(k => {
+    if (scores[k] > scores[best]) best = k;
+  });
+  return best;
+}
+
+function getExamQualityLevelInfo(totalScore) {
+  const s = Math.max(0, Math.min(20, Math.round(Number(totalScore) || 0)));
+  if (s >= 17) return { level: 'ดีมาก', status: 'passed', badgeClass: 'lvl-excellent' };
+  if (s >= 13) return { level: 'ดี', status: 'passed', badgeClass: 'lvl-good' };
+  if (s >= 9) return { level: 'พอใช้', status: 'partial', badgeClass: 'lvl-fair' };
+  return { level: 'ปรับปรุง', status: 'failed', badgeClass: 'lvl-poor' };
+}
+
+function getCriterionLevelInfo(score, maxScore) {
+  const s = Number(score) || 0;
+  if (maxScore === 3) {
+    if (s >= 3) return { label: 'ดีมาก', cls: 'lvl-excellent', cardCls: 'score-high' };
+    if (s === 2) return { label: 'ดี', cls: 'lvl-good', cardCls: 'score-mid' };
+    if (s === 1) return { label: 'พอใช้', cls: 'lvl-fair', cardCls: 'score-low' };
+    return { label: 'ปรับปรุง', cls: 'lvl-poor', cardCls: 'score-zero' };
+  }
+  if (s >= 4) return { label: 'ดีมาก', cls: 'lvl-excellent', cardCls: 'score-high' };
+  if (s === 3) return { label: 'ดี', cls: 'lvl-good', cardCls: 'score-mid' };
+  if (s === 2) return { label: 'พอใช้', cls: 'lvl-fair', cardCls: 'score-low' };
+  return { label: 'ปรับปรุง', cls: 'lvl-poor', cardCls: 'score-zero' };
+}
+
+async function ensureWork5PracticalExamRubric() {
+  const oopCourseId = 'course-python-oop-1';
+  const migrationKey = 'repo_previewer_work5_rubric_v1';
+  try {
+    if (localStorage.getItem(migrationKey) === '1') return;
+  } catch (e) {}
+
+  const courseData = state.courseAssignments && state.courseAssignments[oopCourseId];
+  const existingList = (courseData && Array.isArray(courseData.assignments)) ? [...courseData.assignments] : [];
+
+  const work5Idx = existingList.findIndex(t => {
+    const tup = getAssignmentSortTuple(t);
+    return t.id === 'work-5' || (tup[0] <= 2 && tup[1] === 5);
+  });
+
+  if (work5Idx >= 0) {
+    const cur5 = existingList[work5Idx];
+    const has4Sets = (cur5.prompt || '').includes('ชุด A') && (cur5.prompt || '').includes('ชุด D');
+    if (has4Sets && Number(cur5.max_score) === 20) {
+      try { localStorage.setItem(migrationKey, '1'); } catch (e) {}
+      return;
+    }
+  }
+
+  const targetId = work5Idx >= 0 ? existingList[work5Idx].id : 'work-5';
+  const targetTitle = (work5Idx >= 0 && existingList[work5Idx].title && existingList[work5Idx].title.includes('ชุด'))
+    ? existingList[work5Idx].title
+    : WORK5_PRACTICAL_EXAM_TITLE;
+
+  try {
+    const res = await fetch(`/api/assignment/${encodeURIComponent(oopCourseId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: targetId,
+        title: targetTitle,
+        prompt: WORK5_PRACTICAL_EXAM_PROMPT,
+        max_score: 20,
+        client_assignments: existingList.length > 0 ? existingList : undefined,
+      }),
+    });
+    if (res.ok) {
+      const updated = persistCourseAssignmentsState(oopCourseId, await res.json(), true);
+      const oopCourse = state.courses.find(c => c.id === oopCourseId);
+      if (oopCourse && updated.title) {
+        oopCourse.assignment = updated.title;
+      }
+      try { localStorage.setItem(migrationKey, '1'); } catch (e) {}
+      renderCourseSelect();
+      renderCourseHub();
+      renderAssignmentPickers();
+      if (state.activeCourseId === oopCourseId) {
+        renderStudioPromptPane(getCurrentStudent());
+      }
+    }
+  } catch (e) {
+    console.warn('Could not auto-sync Work 5 rubric:', e);
+  }
+}
+
+function loadExam5PracticalRubricPrompt() {
+  if (elements.modalAssignmentTaskSelect) {
+    const opts = Array.from(elements.modalAssignmentTaskSelect.options);
+    const work5Opt = opts.find(o => o.value === 'work-5' || o.value === 'slot:5' || /^งานที่\s*5\b/.test(o.textContent.trim()));
+    if (work5Opt) {
+      elements.modalAssignmentTaskSelect.value = work5Opt.value;
+      handleModalTaskSelectChange(work5Opt.value);
+    }
+  }
+  if (elements.assignmentTitleInput) {
+    elements.assignmentTitleInput.value = WORK5_PRACTICAL_EXAM_TITLE;
+  }
+  if (elements.assignmentPromptTextarea) {
+    elements.assignmentPromptTextarea.value = WORK5_PRACTICAL_EXAM_PROMPT;
+  }
+  showToast('โหลดโจทย์และตาราง Rubric งานที่ 5 (ข้อสอบปฏิบัติ 4 ชุด A–D · 20 คะแนน) แล้ว', 'success');
+}
+
 function loadExampleProductPrompt() {
   if (elements.assignmentTitleInput) {
     elements.assignmentTitleInput.value = 'งานที่ 4 โปรแกรมจัดการข้อมูลสินค้า (Product Class)';
@@ -1772,6 +2031,7 @@ async function handleSaveAssignment() {
   }
   const prompt = elements.assignmentPromptTextarea ? elements.assignmentPromptTextarea.value.trim() : '';
   const isDirtyLocal = isCourseAssignmentsDirty(course.id);
+  const resolvedMaxScore = isPracticalExamAssignment({ id: selectedTaskId, title, prompt }) ? 20 : 10;
 
   try {
     const res = await fetch(`/api/assignment/${encodeURIComponent(course.id)}`, {
@@ -1781,7 +2041,7 @@ async function handleSaveAssignment() {
         id: selectedTaskId || undefined,
         title: title,
         prompt: prompt,
-        max_score: 10,
+        max_score: resolvedMaxScore,
         client_assignments: isDirtyLocal ? existingList : undefined,
       }),
     });
@@ -1820,6 +2080,81 @@ function toggleStudioPromptPane() {
   }
 }
 
+function updateStudentRubricCriterionScore(student, setCode, criterionId, newScore) {
+  if (!student) return;
+  const setMeta = PRACTICAL_EXAM_SETS_META[setCode] || PRACTICAL_EXAM_SETS_META.A;
+  const asg = getActiveAssignmentData();
+  const activeId = asg ? asg.id : 'work-5';
+
+  if (!student.assignment_evaluation || !Array.isArray(student.assignment_evaluation.rubric_scores) || student.assignment_evaluation.exam_set !== setMeta.code) {
+    student.assignment_evaluation = {
+      mode: 'manual_rubric',
+      assignment_id: activeId,
+      is_practical_exam: true,
+      exam_set: setMeta.code,
+      exam_set_title: setMeta.fullTitle,
+      max_score: 20,
+      score: 0,
+      rubric_scores: setMeta.criteria.map(c => ({
+        id: c.id,
+        title: c.title,
+        score: 0,
+        max_score: c.max_score,
+        level_label: 'ปรับปรุง',
+        evidence: 'ครูให้คะแนนตามตาราง Rubric',
+        feedback: c.desc,
+      })),
+      checklist: [],
+      strengths: [],
+      suggestions: [],
+    };
+  }
+
+  const ev = student.assignment_evaluation;
+  ev.exam_set = setMeta.code;
+  ev.exam_set_title = setMeta.fullTitle;
+  ev.is_practical_exam = true;
+  ev.max_score = 20;
+
+  ev.rubric_scores = ev.rubric_scores.map(item => {
+    if (Number(item.id) === Number(criterionId)) {
+      const clamped = Math.max(0, Math.min(item.max_score, Number(newScore) || 0));
+      const lvl = getCriterionLevelInfo(clamped, item.max_score);
+      return {
+        ...item,
+        score: clamped,
+        level_label: lvl.label,
+      };
+    }
+    return item;
+  });
+
+  const total = ev.rubric_scores.reduce((acc, r) => acc + (Number(r.score) || 0), 0);
+  const q = getExamQualityLevelInfo(total);
+  ev.score = total;
+  ev.quality_level = q.level;
+  ev.status = q.status;
+  ev.status_label = `${q.level} (${total}/20)`;
+  ev.checklist = ev.rubric_scores.map(r => ({
+    criterion: `${r.title} (${r.score}/${r.max_score} คะแนน · ${r.level_label})`,
+    passed: r.score >= r.max_score - 1,
+    score: r.score,
+    max_score: r.max_score,
+    level_label: r.level_label,
+    evidence: r.evidence,
+    feedback: r.feedback,
+  }));
+  const shortBreakdown = ev.rubric_scores.map(r => `ข้อ${r.id}:${r.score}/${r.max_score}`).join(', ');
+  ev.suggested_teacher_note = `[ชุด ${setMeta.code}] ${total}/20 คะแนน (${q.level}) | ${shortBreakdown}`;
+  ev.summary = `[${setMeta.fullTitle}] ประเมินตามตาราง Rubric 6 รายการ ได้ ${total}/20 คะแนน (ระดับคุณภาพ: ${q.level})`;
+
+  updateAssignmentGradeBadge(student);
+  renderStudioPromptPane(student);
+  if (state.activeTab === 'inspect') {
+    renderInspectTab(student);
+  }
+}
+
 function renderStudioPromptPane(student) {
   if (!elements.pyPromptBody) return;
   if (!student) student = getCurrentStudent();
@@ -1832,31 +2167,8 @@ function renderStudioPromptPane(student) {
 
   const promptText = asg.prompt || '';
   const titleText = asg.title || 'โจทย์ประจำงาน';
-
-  // Quick client-side requirement extraction
-  const mCls = promptText.match(/(?:สร้างคลาสชื่อ|class|คลาสชื่อ|คลาส)\s*[`'"]?([A-Za-z_]\w*)[`'"]?/i);
-  const targetClass = mCls ? mCls[1] : null;
-
-  const mAttr = promptText.match(/(?:Property\s*ได้แก่|attribute\s*[:ได้แก่]*|แอตทริบิวต์\s*[:ได้แก่]*|คุณสมบัติ\s*[:ได้แก่]*)\s*([^\n\r]+)/i);
-  let attrs = [];
-  if (mAttr) {
-    attrs = mAttr[1].replace(/[\(\)\[\]`'"และ,]/g, ' ').split(/\s+/).filter(w => /^[a-zA-Z_]\w*$/.test(w));
-  }
-
-  const mMethods = Array.from(promptText.matchAll(/(?:Method\s*(?:ชื่อ)?|เมธอด\s*(?:ชื่อ)?|ฟังก์ชันในคลาส\s*)\s*[`'"]?([A-Za-z_]\w*)\s*(?:\(\))?[`'"]?/gi)).map(m => m[1]);
-  const methods = Array.from(new Set(mMethods));
-
-  const mObjs = promptText.match(/(?:สร้าง\s*Object|สร้าง\s*วัตถุ|สร้าง\s*อ็อบเจกต์).*?(\d+)/i);
-  const minObjs = mObjs ? mObjs[1] : 2;
-
-  let tagsHtml = '';
-  if (targetClass) tagsHtml += `<span class="spec-tag" title="คลาสที่ต้องสร้าง">📦 Class: ${escapeHtml(targetClass)}</span>`;
-  if (attrs.length > 0) tagsHtml += `<span class="spec-tag" title="Property/แอตทริบิวต์ที่ต้องมี">🏷️ Props: ${escapeHtml(attrs.join(', '))}</span>`;
-  if (methods.length > 0) tagsHtml += `<span class="spec-tag" title="Method ที่ต้องมี">⚙️ Method: ${escapeHtml(methods.map(m => m + '()').join(', '))}</span>`;
-  if (minObjs) tagsHtml += `<span class="spec-tag" title="จำนวน Object ขั้นต่ำ">🔢 Min Obj: ${escapeHtml(minObjs)}</span>`;
-
-  // Evaluation status
   const ev = student ? student.assignment_evaluation : null;
+  const isExam = isPracticalExamAssignment(asg) || Boolean(ev && ev.is_practical_exam);
 
   // Update studio rubric badge in toolbar
   if (elements.studioRubricBadge) {
@@ -1867,10 +2179,64 @@ function renderStudioPromptPane(student) {
       elements.studioRubricBadge.className = `rubric-mini-pill ${ev.status || 'passed'}`;
     } else {
       elements.studioRubricBadge.style.display = 'inline-flex';
-      elements.studioRubricBadge.textContent = 'รอตรวจ';
+      elements.studioRubricBadge.textContent = isExam ? 'รอตรวจ (/20)' : 'รอตรวจ';
       elements.studioRubricBadge.title = 'ยังไม่ได้ตรวจเทียบกับโจทย์';
       elements.studioRubricBadge.className = 'rubric-mini-pill';
     }
+  }
+
+  let tagsHtml = '';
+  let examSetSwitcherHtml = '';
+  let activeSetCode = 'A';
+
+  if (isExam) {
+    const currentCode = (elements.pyCodeEditor && elements.pyCodeEditor.value) || state.pyOriginalCode || '';
+    const currentFile = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) || (student && student.raw_input) || '';
+    const preferred = student ? student.preferred_exam_set : null;
+    activeSetCode = (ev && ev.exam_set && PRACTICAL_EXAM_SETS_META[ev.exam_set])
+      ? ev.exam_set
+      : detectClientPracticalExamSet(currentCode, currentFile, student ? student.student_name : '', preferred);
+    const setMeta = PRACTICAL_EXAM_SETS_META[activeSetCode] || PRACTICAL_EXAM_SETS_META.A;
+    const prefMode = (student && student.preferred_exam_set) ? student.preferred_exam_set : 'AUTO';
+
+    examSetSwitcherHtml = `
+      <div class="exam-set-switcher-box">
+        <div class="exam-set-header-row">
+          <span class="exam-set-label">🧪 ข้อสอบปฏิบัติ 4 ชุด (Rubric 20 คะแนน)</span>
+          <span class="exam-set-active-badge">ชุด ${escapeHtml(setMeta.code)}</span>
+        </div>
+        <div class="exam-set-pills-row">
+          <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO" title="ให้ระบบตรวจจับชุดข้อสอบ A/B/C/D จากโค้ดอัตโนมัติ">🤖 อัตโนมัติ</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A" title="ชุด A: โปรแกรมคำนวณราคาสินค้า (Class Product)">ชุด A</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B" title="ชุด B: โปรแกรมบันทึกยอดขายประจำวัน (Class DailySales)">ชุด B</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C" title="ชุด C: โปรแกรมตรวจสอบสินค้าคงเหลือ (Class StockProduct)">ชุด C</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D" title="ชุด D: โปรแกรมคำนวณหน่วยไฟฟ้า (Class ElectricityRecord)">ชุด D</button>
+        </div>
+        <div class="exam-set-sub-title">📌 <strong>${escapeHtml(setMeta.fullTitle)}</strong> · Class <code>${escapeHtml(setMeta.className)}</code></div>
+      </div>
+    `;
+    tagsHtml = `
+      <span class="spec-tag" title="คลาสประจำชุด ${escapeHtml(setMeta.code)}">📦 Class: ${escapeHtml(setMeta.className)}</span>
+      <span class="spec-tag" title="Attributes ประจำชุด">🏷️ ${escapeHtml(setMeta.attrs)}</span>
+      <span class="spec-tag" title="การวนซ้ำและเงื่อนไข">🔄 ${escapeHtml(setMeta.loop)}</span>
+    `;
+  } else {
+    const mCls = promptText.match(/(?:สร้างคลาสชื่อ|class|คลาสชื่อ|คลาส)\s*[`'"]?([A-Za-z_]\w*)[`'"]?/i);
+    const targetClass = mCls ? mCls[1] : null;
+    const mAttr = promptText.match(/(?:Property\s*ได้แก่|attribute\s*[:ได้แก่]*|แอตทริบิวต์\s*[:ได้แก่]*|คุณสมบัติ\s*[:ได้แก่]*)\s*([^\n\r]+)/i);
+    let attrs = [];
+    if (mAttr) {
+      attrs = mAttr[1].replace(/[\(\)\[\]`'"และ,]/g, ' ').split(/\s+/).filter(w => /^[a-zA-Z_]\w*$/.test(w));
+    }
+    const mMethods = Array.from(promptText.matchAll(/(?:Method\s*(?:ชื่อ)?|เมธอด\s*(?:ชื่อ)?|ฟังก์ชันในคลาส\s*)\s*[`'"]?([A-Za-z_]\w*)\s*(?:\(\))?[`'"]?/gi)).map(m => m[1]);
+    const methods = Array.from(new Set(mMethods));
+    const mObjs = promptText.match(/(?:สร้าง\s*Object|สร้าง\s*วัตถุ|สร้าง\s*อ็อบเจกต์).*?(\d+)/i);
+    const minObjs = mObjs ? mObjs[1] : 2;
+
+    if (targetClass) tagsHtml += `<span class="spec-tag" title="คลาสที่ต้องสร้าง">📦 Class: ${escapeHtml(targetClass)}</span>`;
+    if (attrs.length > 0) tagsHtml += `<span class="spec-tag" title="Property/แอตทริบิวต์ที่ต้องมี">🏷️ Props: ${escapeHtml(attrs.join(', '))}</span>`;
+    if (methods.length > 0) tagsHtml += `<span class="spec-tag" title="Method ที่ต้องมี">⚙️ Method: ${escapeHtml(methods.map(m => m + '()').join(', '))}</span>`;
+    if (minObjs) tagsHtml += `<span class="spec-tag" title="จำนวน Object ขั้นต่ำ">🔢 Min Obj: ${escapeHtml(minObjs)}</span>`;
   }
 
   let evalStatusHtml = '';
@@ -1880,7 +2246,7 @@ function renderStudioPromptPane(student) {
     const isPassed = ev.status === 'passed';
     const isPartial = ev.status === 'partial';
     const scoreClass = isPassed ? 'passed' : (isPartial ? 'partial' : 'failed');
-    const badgeMode = ev.mode === 'gemini_ai' ? '🤖 ตรวจด้วย Gemini AI' : '⚡ ตรวจด้วย AST Heuristic (ออฟไลน์)';
+    const badgeMode = ev.mode === 'gemini_ai' ? '🤖 ตรวจด้วย Gemini AI' : (ev.mode === 'manual_rubric' ? '✍️ ครูให้คะแนนตาม Rubric' : '⚡ ตรวจด้วย AST Heuristic');
 
     evalStatusHtml = `
       <div class="prompt-score-bar-compact">
@@ -1898,7 +2264,64 @@ function renderStudioPromptPane(student) {
         </div>
       </div>
     `;
+  } else {
+    evalStatusHtml = `
+      <div style="padding:4px 6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:6px; text-align:center;">
+        <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center; height:28px; font-size:0.75rem;">
+          ⚡ ${isExam ? `ตรวจตามตาราง Rubric (ชุด ${activeSetCode} · 20 คะแนน)` : 'ตรวจโค้ดตามโจทย์ทันที'}
+        </button>
+      </div>
+    `;
+  }
 
+  if (isExam) {
+    const setMeta = PRACTICAL_EXAM_SETS_META[activeSetCode] || PRACTICAL_EXAM_SETS_META.A;
+    const rubricRows = (ev && Array.isArray(ev.rubric_scores) && ev.rubric_scores.length === 6)
+      ? ev.rubric_scores
+      : setMeta.criteria.map(c => ({
+          id: c.id,
+          title: c.title,
+          score: null,
+          max_score: c.max_score,
+          level_label: 'รอประเมิน',
+          evidence: '',
+          feedback: c.desc,
+        }));
+
+    checklistHtml = `
+      <div class="rubric-scorecard-list">
+        ${rubricRows.map(r => {
+          const hasScore = r.score !== null && r.score !== undefined;
+          const lvl = hasScore ? getCriterionLevelInfo(r.score, r.max_score) : { label: `เต็ม ${r.max_score}`, cls: 'lvl-good', cardCls: '' };
+          const ptBtns = [];
+          for (let p = 0; p <= r.max_score; p++) {
+            ptBtns.push(`<button type="button" class="rubric-pt-btn ${hasScore && Number(r.score) === p ? 'active' : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="คลิกเพื่อให้ ${p}/${r.max_score} คะแนนในหัวข้อนี้">${p}</button>`);
+          }
+          return `
+            <div class="rubric-score-card ${lvl.cardCls}">
+              <div class="rubric-score-top">
+                <div class="rubric-score-title">${escapeHtml(r.title)}</div>
+                <span class="rubric-score-badge ${lvl.cls}">${hasScore ? `${r.score}/${r.max_score} · ${escapeHtml(lvl.label)}` : `เต็ม ${r.max_score} คะแนน`}</span>
+              </div>
+              <div class="rubric-pt-buttons">
+                <span style="font-size:0.68rem; color:#94a3b8; margin-right:2px;">คะแนน:</span>
+                ${ptBtns.join('')}
+              </div>
+              ${r.evidence ? `<div class="rubric-crit-evidence">🔍 ${escapeHtml(r.evidence)}</div>` : ''}
+              ${r.feedback ? `<div class="rubric-crit-desc">${escapeHtml(r.feedback)}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="rubric-scale-legend">
+        <span><strong>เกณฑ์รวม 20 คะแนน:</strong></span>
+        <span style="color:#6ee7b7;">17–20 ดีมาก</span>
+        <span style="color:#7dd3fc;">13–16 ดี</span>
+        <span style="color:#fcd34d;">9–12 พอใช้</span>
+        <span style="color:#fca5a5;">0–8 ปรับปรุง</span>
+      </div>
+    `;
+  } else if (ev) {
     const items = ev.checklist || [];
     checklistHtml = `
       <div class="rubric-mini-list">
@@ -1915,43 +2338,13 @@ function renderStudioPromptPane(student) {
       </div>
     `;
   } else {
-    evalStatusHtml = `
-      <div style="padding:4px 6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:6px; text-align:center;">
-        <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center; height:26px; font-size:0.74rem;">
-          ⚡ ตรวจโค้ดตามโจทย์ทันที
-        </button>
-      </div>
-    `;
-
-    // Preview what will be checked
     checklistHtml = `
       <div class="rubric-mini-list">
         <div class="rubric-mini-item">
           <span class="rubric-mini-icon">🔍</span>
           <div class="rubric-mini-text">
-            <div class="rubric-mini-title">ตรวจคลาสและ Constructor</div>
-            <div class="rubric-mini-feedback">${targetClass ? `ต้องมี class ${escapeHtml(targetClass)} และ __init__` : 'สร้างคลาสตามโจทย์'}</div>
-          </div>
-        </div>
-        <div class="rubric-mini-item">
-          <span class="rubric-mini-icon">🔍</span>
-          <div class="rubric-mini-text">
-            <div class="rubric-mini-title">ตรวจ Property / Attributes</div>
-            <div class="rubric-mini-feedback">${attrs.length > 0 ? `ต้องกำหนด self.${attrs.join(', self.')}` : 'กำหนด Property ตามโจทย์'}</div>
-          </div>
-        </div>
-        <div class="rubric-mini-item">
-          <span class="rubric-mini-icon">🔍</span>
-          <div class="rubric-mini-text">
-            <div class="rubric-mini-title">ตรวจ Method ในคลาส</div>
-            <div class="rubric-mini-feedback">${methods.length > 0 ? `ต้องมี def ${methods.join('(), def ')}()` : 'สร้าง Method ตามโจทย์'}</div>
-          </div>
-        </div>
-        <div class="rubric-mini-item">
-          <span class="rubric-mini-icon">🔍</span>
-          <div class="rubric-mini-text">
-            <div class="rubric-mini-title">ตรวจการสร้าง Object</div>
-            <div class="rubric-mini-feedback">สร้าง Object อย่างน้อย ${minObjs} รายการและเรียกใช้งาน Method</div>
+            <div class="rubric-mini-title">ตรวจโครงสร้างโค้ดตามโจทย์</div>
+            <div class="rubric-mini-feedback">กดปุ่ม "ตรวจโค้ดตามโจทย์ทันที" ด้านบนเพื่อประเมินผล</div>
           </div>
         </div>
       </div>
@@ -1974,10 +2367,11 @@ function renderStudioPromptPane(student) {
       ${tagsHtml ? `<div class="prompt-specs-tags">${tagsHtml}</div>` : ''}
     </div>
 
+    ${examSetSwitcherHtml}
     ${evalStatusHtml}
 
     <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-top:1px;">
-      เกณฑ์ตรวจเทียบกับโค้ด
+      ${isExam ? `ตารางประเมิน Rubric Score (ชุด ${activeSetCode} · 6 รายการ · 20 คะแนน)` : 'เกณฑ์ตรวจเทียบกับโค้ด'}
     </div>
     ${checklistHtml}
   `;
@@ -2014,16 +2408,41 @@ function renderStudioPromptPane(student) {
       applyEvaluationNote(student);
     });
   }
+
+  // Exam set switcher buttons (Auto / A / B / C / D)
+  elements.pyPromptBody.querySelectorAll('.exam-set-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const chosen = pill.dataset.examSet;
+      if (student) {
+        student.preferred_exam_set = (chosen === 'AUTO') ? null : chosen;
+      }
+      gradeCurrentStudentAgainstAssignment(student, (chosen === 'AUTO') ? null : chosen);
+    });
+  });
+
+  // Interactive rubric point buttons (0..3 / 0..4)
+  elements.pyPromptBody.querySelectorAll('.rubric-pt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const critId = parseInt(btn.dataset.critId, 10);
+      const pt = parseInt(btn.dataset.critPt, 10);
+      updateStudentRubricCriterionScore(student, activeSetCode, critId, pt);
+    });
+  });
 }
 
-async function gradeCurrentStudentAgainstAssignment(student) {
+async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = undefined) {
   if (!student) student = getCurrentStudent();
   if (!student) return;
+
+  if (preferredExamSet !== undefined) {
+    student.preferred_exam_set = preferredExamSet;
+  }
 
   const course = getActiveCourse();
   const asg = getActiveAssignmentData();
   const activeId = asg ? asg.id : 'work-4';
   const promptToUse = asg ? asg.prompt : DEFAULT_PRODUCT_PROMPT;
+  const examSetToSend = student.preferred_exam_set || undefined;
 
   // กำหนดสถานะปุ่ม
   if (elements.assignmentGradeBadge) {
@@ -2059,6 +2478,7 @@ async function gradeCurrentStudentAgainstAssignment(student) {
       prompt: promptToUse,
       api_key: globalApiKey || undefined,
       student_name: student.student_name || `${student.owner}/${student.repo}`,
+      exam_set: examSetToSend,
     };
 
     const res = await fetch('/api/assignment/grade', {
@@ -4889,11 +5309,71 @@ function renderInspectTab(student) {
   if (evalInfo) {
     const evalCard = document.createElement('div');
     evalCard.className = `inspect-card assignment-eval-card ${evalInfo.status || 'passed'}`;
+    const isExamEval = Boolean(evalInfo.is_practical_exam && Array.isArray(evalInfo.rubric_scores));
+    const examSetCode = evalInfo.exam_set || 'A';
+    const prefMode = (student && student.preferred_exam_set) ? student.preferred_exam_set : 'AUTO';
+
+    const examSetBarInInspect = isExamEval ? `
+      <div class="exam-set-switcher-box" style="margin-bottom: 12px;">
+        <div class="exam-set-header-row">
+          <span class="exam-set-label">🧪 ข้อสอบปฏิบัติ: ${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)}</span>
+          <span class="exam-set-active-badge">ชุด ${escapeHtml(examSetCode)} · เต็ม 20 คะแนน</span>
+        </div>
+        <div class="exam-set-pills-row">
+          <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO">🤖 อัตโนมัติ</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A">ชุด A (Product)</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B">ชุด B (DailySales)</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C">ชุด C (StockProduct)</button>
+          <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D">ชุด D (ElectricityRecord)</button>
+        </div>
+      </div>
+    ` : '';
+
+    const rubricChecklistHtml = isExamEval ? `
+      <div class="ai-section-subtitle">📊 ตารางประเมิน Rubric Score (${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)} · คลิกปรับคะแนนรายข้อได้ทันที)</div>
+      <div class="rubric-scorecard-list" style="margin-bottom: 12px;">
+        ${evalInfo.rubric_scores.map(r => {
+          const lvl = getCriterionLevelInfo(r.score, r.max_score);
+          const ptBtns = [];
+          for (let p = 0; p <= r.max_score; p++) {
+            ptBtns.push(`<button type="button" class="rubric-pt-btn ${Number(r.score) === p ? 'active' : ''}" data-crit-id="${r.id}" data-crit-pt="${p}">${p} คะแนน</button>`);
+          }
+          return `
+            <div class="rubric-score-card ${lvl.cardCls}">
+              <div class="rubric-score-top">
+                <div class="rubric-score-title">${escapeHtml(r.title)}</div>
+                <span class="rubric-score-badge ${lvl.cls}">${r.score}/${r.max_score} คะแนน · ${escapeHtml(lvl.label)}</span>
+              </div>
+              <div class="rubric-pt-buttons">
+                ${ptBtns.join('')}
+              </div>
+              ${r.evidence ? `<div class="rubric-crit-evidence">🔍 ${escapeHtml(r.evidence)}</div>` : ''}
+              ${r.feedback ? `<div class="rubric-crit-desc">${escapeHtml(r.feedback)}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : `
+      <div class="ai-section-subtitle">📋 เช็คลิสต์ข้อกำหนดตามโจทย์ (${(evalInfo.checklist || []).filter(c => c.passed).length}/${(evalInfo.checklist || []).length} ข้อ)</div>
+      <div class="rubric-checklist">
+        ${(evalInfo.checklist || []).map(item => `
+          <div class="rubric-item ${item.passed ? 'passed' : 'failed'}">
+            <div class="rubric-item-icon">${item.passed ? '✅' : '❌'}</div>
+            <div class="rubric-item-content">
+              <div class="rubric-item-title">${escapeHtml(item.criterion)}</div>
+              ${item.evidence ? `<div class="rubric-item-evidence">🔍 ${escapeHtml(item.evidence)}</div>` : ''}
+              ${item.feedback ? `<div class="rubric-item-feedback">${escapeHtml(item.feedback)}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
     evalCard.innerHTML = `
       <div class="inspect-card-header">
         <div class="inspect-card-title">
           <span>🎯</span>
-          <span>ผลการตรวจตามโจทย์ & เกณฑ์การให้คะแนน (Assignment Evaluation)</span>
+          <span>ผลการตรวจตามโจทย์ & เกณฑ์การให้คะแนน ${isExamEval ? `(${escapeHtml(evalInfo.exam_set_title || `ชุด ${examSetCode}`)})` : '(Assignment Evaluation)'}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="กดเพื่อตรวจซ้ำใหม่">
@@ -4905,6 +5385,7 @@ function renderInspectTab(student) {
         </div>
       </div>
       <div class="inspect-card-body">
+        ${examSetBarInInspect}
         <div class="eval-overview-grid">
           <div class="eval-score-box ${evalInfo.status || 'passed'}">
             <div class="eval-score-num">${evalInfo.score}</div>
@@ -4919,24 +5400,12 @@ function renderInspectTab(student) {
                 <span>บันทึกลงช่องคะแนน</span>
               </button>
             </div>
-            ${evalInfo.mode === 'gemini_ai' ? `<span style="font-size:0.78rem; color:#38bdf8;">🤖 ตรวจสอบด้วย Gemini AI (${escapeHtml(evalInfo.model_used || 'Gemini Flash')})</span>` : '<span style="font-size:0.78rem; color:#94a3b8;">⚙️ ตรวจสอบโครงสร้างด้วย AST Heuristics</span>'}
+            ${evalInfo.mode === 'gemini_ai' ? `<span style="font-size:0.78rem; color:#38bdf8;">🤖 ตรวจสอบด้วย Gemini AI (${escapeHtml(evalInfo.model_used || 'Gemini Flash')})</span>` : (evalInfo.mode === 'manual_rubric' ? '<span style="font-size:0.78rem; color:#6ee7b7;">✍️ ปรับคะแนนตามตาราง Rubric โดยครูผู้สอน</span>' : '<span style="font-size:0.78rem; color:#94a3b8;">⚙️ ตรวจสอบโครงสร้างด้วย AST Heuristics</span>')}
             ${evalInfo.api_warning ? `<div style="font-size:0.78rem; color:#f59e0b; margin-top:2px;">⚠️ ${escapeHtml(evalInfo.api_warning)}</div>` : ''}
           </div>
         </div>
 
-        <div class="ai-section-subtitle">📋 เช็คลิสต์ข้อกำหนดตามโจทย์ (${(evalInfo.checklist || []).filter(c => c.passed).length}/${(evalInfo.checklist || []).length} ข้อ)</div>
-        <div class="rubric-checklist">
-          ${(evalInfo.checklist || []).map(item => `
-            <div class="rubric-item ${item.passed ? 'passed' : 'failed'}">
-              <div class="rubric-item-icon">${item.passed ? '✅' : '❌'}</div>
-              <div class="rubric-item-content">
-                <div class="rubric-item-title">${escapeHtml(item.criterion)}</div>
-                ${item.evidence ? `<div class="rubric-item-evidence">🔍 ${escapeHtml(item.evidence)}</div>` : ''}
-                ${item.feedback ? `<div class="rubric-item-feedback">${escapeHtml(item.feedback)}</div>` : ''}
-              </div>
-            </div>
-          `).join('')}
-        </div>
+        ${rubricChecklistHtml}
 
         ${((evalInfo.strengths && evalInfo.strengths.length > 0) || (evalInfo.suggestions && evalInfo.suggestions.length > 0)) ? `
           <div class="strengths-suggestions-grid">
@@ -4973,6 +5442,20 @@ function renderInspectTab(student) {
     if (btnRegrade) {
       btnRegrade.addEventListener('click', () => gradeCurrentStudentAgainstAssignment(student));
     }
+    evalCard.querySelectorAll('.exam-set-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const chosen = pill.dataset.examSet;
+        if (student) student.preferred_exam_set = (chosen === 'AUTO') ? null : chosen;
+        gradeCurrentStudentAgainstAssignment(student, (chosen === 'AUTO') ? null : chosen);
+      });
+    });
+    evalCard.querySelectorAll('.rubric-pt-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const critId = parseInt(btn.dataset.critId, 10);
+        const pt = parseInt(btn.dataset.critPt, 10);
+        updateStudentRubricCriterionScore(student, examSetCode, critId, pt);
+      });
+    });
 
     container.appendChild(evalCard);
   } else {
