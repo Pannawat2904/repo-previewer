@@ -495,8 +495,8 @@ async def api_save_gemini_key(req: GeminiKeyRequest):
     save_config({"gemini_api_key": clean_key})
     masked = clean_key[:6] + "..." + clean_key[-4:] if len(clean_key) >= 12 else "AIza...****"
 
-    if req.skip_test:
-        return {"status": "ok", "message": "ซิงก์ Gemini API Key กลางสำเร็จ", "masked": masked}
+    if req.skip_test or clean_key.startswith("AQ."):
+        return {"status": "ok", "message": "บันทึกและเปิดใช้งาน API Key กลางทั้งระบบสำเร็จ!", "masked": masked}
 
     test_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
     payload = {

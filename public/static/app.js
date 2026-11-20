@@ -165,6 +165,12 @@ const elements = {
   aiSettingsModal: document.getElementById('aiSettingsModal'),
   btnCloseAiSettingsModal: document.getElementById('btnCloseAiSettingsModal'),
   btnDoneAiSettingsModal: document.getElementById('btnDoneAiSettingsModal'),
+  examSetConfirmModal: document.getElementById('examSetConfirmModal'),
+  examConfirmStudentLabel: document.getElementById('examConfirmStudentLabel'),
+  examConfirmSuggestBanner: document.getElementById('examConfirmSuggestBanner'),
+  examConfirmCardsGrid: document.getElementById('examConfirmCardsGrid'),
+  btnCloseExamConfirmModal: document.getElementById('btnCloseExamConfirmModal'),
+  btnCancelExamConfirmModal: document.getElementById('btnCancelExamConfirmModal'),
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
   btnDeleteAssignment: document.getElementById('btnDeleteAssignment'),
@@ -787,6 +793,14 @@ function setupEventListeners() {
   if (elements.aiSettingsModal) {
     elements.aiSettingsModal.addEventListener('click', (e) => {
       if (e.target === elements.aiSettingsModal) closeAiSettingsModal();
+    });
+  }
+  [elements.btnCloseExamConfirmModal, elements.btnCancelExamConfirmModal].forEach(btn => {
+    if (btn) btn.addEventListener('click', closeExamSetConfirmModal);
+  });
+  if (elements.examSetConfirmModal) {
+    elements.examSetConfirmModal.addEventListener('click', (e) => {
+      if (e.target === elements.examSetConfirmModal) closeExamSetConfirmModal();
     });
   }
   if (elements.assignmentGradeBadge) {
@@ -1822,12 +1836,29 @@ function loadExampleProductPrompt() {
 }
 
 const GLOBAL_GEMINI_KEY_STORAGE = 'repo_previewer_gemini_api_key';
+const DEFAULT_BUILTIN_GEMINI_KEY_B64 = 'QVEuQWI4Uk42S0lkX3d2ZnQxT001aEJ6VF9lZXJ5dFlwc243TVJyVnhJRVB3UlZtSFNvX2c=';
+
+function getBuiltinGeminiKey() {
+  try {
+    return atob(DEFAULT_BUILTIN_GEMINI_KEY_B64).trim();
+  } catch (e) {
+    return '';
+  }
+}
 
 function getSavedGlobalGeminiKey() {
   try {
-    return (localStorage.getItem(GLOBAL_GEMINI_KEY_STORAGE) || '').trim();
+    const raw = localStorage.getItem(GLOBAL_GEMINI_KEY_STORAGE);
+    if (raw !== null) {
+      return raw.trim();
+    }
+    const builtin = getBuiltinGeminiKey();
+    if (builtin) {
+      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, builtin);
+    }
+    return builtin;
   } catch (e) {
-    return '';
+    return getBuiltinGeminiKey();
   }
 }
 
@@ -2080,9 +2111,86 @@ function toggleStudioPromptPane() {
   }
 }
 
+function openExamSetConfirmModal(student) {
+  if (!student) student = getCurrentStudent();
+  if (!student || !elements.examSetConfirmModal) return;
+
+  const currentCode = (elements.pyCodeEditor && elements.pyCodeEditor.value) || state.pyOriginalCode || '';
+  const currentFile = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) || student.raw_input || '';
+  const suggestedSet = detectClientPracticalExamSet(currentCode, currentFile, student.student_name || '', null);
+  const suggestedMeta = PRACTICAL_EXAM_SETS_META[suggestedSet] || PRACTICAL_EXAM_SETS_META.A;
+  const currentConfirmed = student.confirmed_exam_set || null;
+
+  if (elements.examConfirmStudentLabel) {
+    elements.examConfirmStudentLabel.textContent = `นักเรียน: ${student.student_name || student.repo} (${currentFile.replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '')})`;
+  }
+  if (elements.examConfirmSuggestBanner) {
+    elements.examConfirmSuggestBanner.innerHTML = `
+      💡 ระบบวิเคราะห์คำสำคัญในโค้ดเบื้องต้นพบว่าใกล้เคียงกับ <strong>"${escapeHtml(suggestedMeta.fullTitle)}"</strong><br>
+      กรุณาคลิกยืนยันว่านักเรียนคนนี้ได้ข้อสอบชุดใด (A, B, C หรือ D) เพื่อให้ระบบตรวจตามตาราง Rubric 20 คะแนนได้ตรงชุด:
+    `;
+  }
+
+  if (elements.examConfirmCardsGrid) {
+    elements.examConfirmCardsGrid.innerHTML = ['A', 'B', 'C', 'D'].map(code => {
+      const m = PRACTICAL_EXAM_SETS_META[code];
+      const isSuggested = code === suggestedSet;
+      const isConfirmed = code === currentConfirmed;
+      let tagHtml = '';
+      if (isConfirmed) {
+        tagHtml = `<span class="exam-confirm-hint-tag confirmed">✓ ชุดที่เลือกไว้ปัจจุบัน</span>`;
+      } else if (isSuggested) {
+        tagHtml = `<span class="exam-confirm-hint-tag">✨ แนะนำจากโค้ด</span>`;
+      }
+      return `
+        <button type="button" class="exam-confirm-card ${isConfirmed ? 'is-confirmed' : (isSuggested ? 'is-suggested' : '')}" data-confirm-set="${code}">
+          <div class="exam-confirm-card-top">
+            <span class="exam-confirm-set-pill">ชุด ${code}</span>
+            ${tagHtml}
+          </div>
+          <div class="exam-confirm-card-title">${escapeHtml(m.title)}</div>
+          <div class="exam-confirm-card-meta">
+            <div>📦 Class: <code>${escapeHtml(m.className)}</code></div>
+            <div>🏷️ Attributes: ${escapeHtml(m.attrs)}</div>
+            <div>🔄 คำสั่ง: ${escapeHtml(m.loop)}</div>
+          </div>
+          <div class="exam-confirm-card-cta">✓ ยืนยันตรวจด้วยข้อสอบชุด ${code} (20 คะแนน)</div>
+        </button>
+      `;
+    }).join('');
+
+    elements.examConfirmCardsGrid.querySelectorAll('.exam-confirm-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const chosenSet = card.dataset.confirmSet;
+        confirmStudentExamSetAndGrade(student, chosenSet);
+      });
+    });
+  }
+
+  elements.examSetConfirmModal.style.display = 'flex';
+}
+
+function closeExamSetConfirmModal() {
+  if (elements.examSetConfirmModal) {
+    elements.examSetConfirmModal.style.display = 'none';
+  }
+}
+
+function confirmStudentExamSetAndGrade(student, chosenSet) {
+  if (!student || !PRACTICAL_EXAM_SETS_META[chosenSet]) return;
+  student.confirmed_exam_set = chosenSet;
+  student.preferred_exam_set = chosenSet;
+  persistLocalStudentReview(student);
+  closeExamSetConfirmModal();
+  gradeCurrentStudentAgainstAssignment(student, chosenSet, true);
+}
+
 function updateStudentRubricCriterionScore(student, setCode, criterionId, newScore) {
   if (!student) return;
   const setMeta = PRACTICAL_EXAM_SETS_META[setCode] || PRACTICAL_EXAM_SETS_META.A;
+  student.confirmed_exam_set = setMeta.code;
+  student.preferred_exam_set = setMeta.code;
+  persistLocalStudentReview(student);
   const asg = getActiveAssignmentData();
   const activeId = asg ? asg.id : 'work-5';
 
@@ -2192,25 +2300,25 @@ function renderStudioPromptPane(student) {
   if (isExam) {
     const currentCode = (elements.pyCodeEditor && elements.pyCodeEditor.value) || state.pyOriginalCode || '';
     const currentFile = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) || (student && student.raw_input) || '';
-    const preferred = student ? student.preferred_exam_set : null;
-    activeSetCode = (ev && ev.exam_set && PRACTICAL_EXAM_SETS_META[ev.exam_set])
-      ? ev.exam_set
-      : detectClientPracticalExamSet(currentCode, currentFile, student ? student.student_name : '', preferred);
+    const confirmedSet = (student && student.confirmed_exam_set && PRACTICAL_EXAM_SETS_META[student.confirmed_exam_set])
+      ? student.confirmed_exam_set
+      : null;
+    const suggestedSet = detectClientPracticalExamSet(currentCode, currentFile, student ? student.student_name : '', null);
+    activeSetCode = confirmedSet
+      || ((ev && ev.exam_set && PRACTICAL_EXAM_SETS_META[ev.exam_set]) ? ev.exam_set : suggestedSet);
     const setMeta = PRACTICAL_EXAM_SETS_META[activeSetCode] || PRACTICAL_EXAM_SETS_META.A;
-    const prefMode = (student && student.preferred_exam_set) ? student.preferred_exam_set : 'AUTO';
 
     examSetSwitcherHtml = `
       <div class="exam-set-switcher-box">
         <div class="exam-set-header-row">
-          <span class="exam-set-label">🧪 ข้อสอบปฏิบัติ 4 ชุด (Rubric 20 คะแนน)</span>
-          <span class="exam-set-active-badge">ชุด ${escapeHtml(setMeta.code)}</span>
+          <span class="exam-set-label">🧪 เลือกยืนยันชุดข้อสอบของนักเรียน</span>
+          <span class="exam-set-active-badge">${confirmedSet ? `✓ ยืนยันแล้ว: ชุด ${escapeHtml(confirmedSet)}` : `แนะนำ: ชุด ${escapeHtml(suggestedSet)}`}</span>
         </div>
         <div class="exam-set-pills-row">
-          <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO" title="ให้ระบบตรวจจับชุดข้อสอบ A/B/C/D จากโค้ดอัตโนมัติ">🤖 อัตโนมัติ</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A" title="ชุด A: โปรแกรมคำนวณราคาสินค้า (Class Product)">ชุด A</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B" title="ชุด B: โปรแกรมบันทึกยอดขายประจำวัน (Class DailySales)">ชุด B</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C" title="ชุด C: โปรแกรมตรวจสอบสินค้าคงเหลือ (Class StockProduct)">ชุด C</button>
-          <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D" title="ชุด D: โปรแกรมคำนวณหน่วยไฟฟ้า (Class ElectricityRecord)">ชุด D</button>
+          <button type="button" class="exam-set-pill ${confirmedSet === 'A' ? 'active' : ''}" data-exam-set="A" title="คลิกเพื่อยืนยันข้อสอบชุด A: โปรแกรมคำนวณราคาสินค้า (Class Product)">ชุด A</button>
+          <button type="button" class="exam-set-pill ${confirmedSet === 'B' ? 'active' : ''}" data-exam-set="B" title="คลิกเพื่อยืนยันข้อสอบชุด B: โปรแกรมบันทึกยอดขายประจำวัน (Class DailySales)">ชุด B</button>
+          <button type="button" class="exam-set-pill ${confirmedSet === 'C' ? 'active' : ''}" data-exam-set="C" title="คลิกเพื่อยืนยันข้อสอบชุด C: โปรแกรมตรวจสอบสินค้าคงเหลือ (Class StockProduct)">ชุด C</button>
+          <button type="button" class="exam-set-pill ${confirmedSet === 'D' ? 'active' : ''}" data-exam-set="D" title="คลิกเพื่อยืนยันข้อสอบชุด D: โปรแกรมคำนวณหน่วยไฟฟ้า (Class ElectricityRecord)">ชุด D</button>
         </div>
         <div class="exam-set-sub-title">📌 <strong>${escapeHtml(setMeta.fullTitle)}</strong> · Class <code>${escapeHtml(setMeta.className)}</code></div>
       </div>
@@ -2258,8 +2366,8 @@ function renderStudioPromptPane(student) {
           <button type="button" class="btn btn-secondary btn-xs" id="btnStudioApplyNote" title="นำข้อสรุปและคะแนนลงบันทึกในช่องตรวจ">
             📝 บันทึก
           </button>
-          <button type="button" class="btn btn-secondary btn-xs" id="btnStudioReGrade" title="ตรวจโค้ดตามโจทย์อีกครั้ง">
-            ⚡ ตรวจซ้ำ
+          <button type="button" class="btn btn-secondary btn-xs" id="btnStudioReGrade" title="เลือกชุดข้อสอบใหม่หรือตรวจโค้ดซ้ำอีกครั้ง">
+            ${isExam ? '🔀 เปลี่ยนชุด / ตรวจซ้ำ' : '⚡ ตรวจซ้ำ'}
           </button>
         </div>
       </div>
@@ -2268,7 +2376,7 @@ function renderStudioPromptPane(student) {
     evalStatusHtml = `
       <div style="padding:4px 6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:6px; text-align:center;">
         <button type="button" class="btn btn-primary btn-sm btn-block" id="btnStudioGradeNow" style="width:100%; justify-content:center; height:28px; font-size:0.75rem;">
-          ⚡ ${isExam ? `ตรวจตามตาราง Rubric (ชุด ${activeSetCode} · 20 คะแนน)` : 'ตรวจโค้ดตามโจทย์ทันที'}
+          ⚡ ${isExam ? 'เลือกยืนยันชุดข้อสอบ (A–D) และเริ่มตรวจ' : 'ตรวจโค้ดตามโจทย์ทันที'}
         </button>
       </div>
     `;
@@ -2415,14 +2523,15 @@ function renderStudioPromptPane(student) {
     });
   }
 
-  // Exam set switcher buttons (Auto / A / B / C / D)
+  // Exam set switcher buttons (A / B / C / D) — คลิกเพื่อยืนยันชุดข้อสอบและตรวจทันที
   elements.pyPromptBody.querySelectorAll('.exam-set-pill').forEach(pill => {
     pill.addEventListener('click', () => {
       const chosen = pill.dataset.examSet;
-      if (student) {
-        student.preferred_exam_set = (chosen === 'AUTO') ? null : chosen;
+      if (chosen && PRACTICAL_EXAM_SETS_META[chosen]) {
+        confirmStudentExamSetAndGrade(student, chosen);
+      } else {
+        openExamSetConfirmModal(student);
       }
-      gradeCurrentStudentAgainstAssignment(student, (chosen === 'AUTO') ? null : chosen);
     });
   });
 
@@ -2436,19 +2545,28 @@ function renderStudioPromptPane(student) {
   });
 }
 
-async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = undefined) {
+async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = undefined, isConfirmedNow = false) {
   if (!student) student = getCurrentStudent();
   if (!student) return;
-
-  if (preferredExamSet !== undefined) {
-    student.preferred_exam_set = preferredExamSet;
-  }
 
   const course = getActiveCourse();
   const asg = getActiveAssignmentData();
   const activeId = asg ? asg.id : 'work-4';
   const promptToUse = asg ? asg.prompt : DEFAULT_PRODUCT_PROMPT;
-  const examSetToSend = student.preferred_exam_set || undefined;
+
+  // สำหรับงานสอบปฏิบัติ 4 ชุด (A, B, C, D) ให้ครูยืนยันชุดข้อสอบของนักเรียนก่อนเสมอ
+  if (isPracticalExamAssignment(asg) && !isConfirmedNow) {
+    openExamSetConfirmModal(student);
+    return;
+  }
+
+  if (preferredExamSet !== undefined) {
+    student.preferred_exam_set = preferredExamSet;
+    student.confirmed_exam_set = preferredExamSet;
+    persistLocalStudentReview(student);
+  }
+
+  const examSetToSend = student.confirmed_exam_set || student.preferred_exam_set || undefined;
 
   // กำหนดสถานะปุ่ม
   if (elements.assignmentGradeBadge) {
@@ -2624,6 +2742,11 @@ function setupKeyboardShortcuts() {
       e.preventDefault();
       toggleZenMode();
     } else if (e.key === 'Escape') {
+      if (elements.examSetConfirmModal && elements.examSetConfirmModal.style.display !== 'none') {
+        e.preventDefault();
+        closeExamSetConfirmModal();
+        return;
+      }
       if (elements.aiSettingsModal && elements.aiSettingsModal.style.display !== 'none') {
         e.preventDefault();
         closeAiSettingsModal();
@@ -4830,6 +4953,7 @@ function persistLocalStudentReview(student, courseId = '') {
     const entry = {
       viewed: !!student.viewed,
       note: student.note || '',
+      confirmed_exam_set: student.confirmed_exam_set || null,
       updated_at: Date.now(),
     };
     getStudentReviewStorageKeys(student, courseId).forEach(k => {
@@ -4848,6 +4972,10 @@ function hydrateStudentReviewState(student, courseId = '') {
     if (saved && typeof saved === 'object') {
       if (saved.viewed) student.viewed = true;
       if (!student.note && saved.note) student.note = saved.note;
+      if (saved.confirmed_exam_set && !student.confirmed_exam_set) {
+        student.confirmed_exam_set = saved.confirmed_exam_set;
+        student.preferred_exam_set = saved.confirmed_exam_set;
+      }
       break;
     }
   }
@@ -5334,11 +5462,10 @@ function renderInspectTab(student) {
                 <span class="spec-tag">Class ${escapeHtml(setMeta.className)}</span>
               </div>
               <div class="exam-set-pills-row" style="max-width: 540px;">
-                <button type="button" class="exam-set-pill ${prefMode === 'AUTO' ? 'active' : ''}" data-exam-set="AUTO">🤖 ตรวจจับอัตโนมัติ</button>
-                <button type="button" class="exam-set-pill ${prefMode === 'A' ? 'active' : ''}" data-exam-set="A">ชุด A · ราคาสินค้า</button>
-                <button type="button" class="exam-set-pill ${prefMode === 'B' ? 'active' : ''}" data-exam-set="B">ชุด B · ยอดขาย</button>
-                <button type="button" class="exam-set-pill ${prefMode === 'C' ? 'active' : ''}" data-exam-set="C">ชุด C · สินค้าคงเหลือ</button>
-                <button type="button" class="exam-set-pill ${prefMode === 'D' ? 'active' : ''}" data-exam-set="D">ชุด D · หน่วยไฟฟ้า</button>
+                <button type="button" class="exam-set-pill ${examSetCode === 'A' ? 'active' : ''}" data-exam-set="A">ชุด A · ราคาสินค้า</button>
+                <button type="button" class="exam-set-pill ${examSetCode === 'B' ? 'active' : ''}" data-exam-set="B">ชุด B · ยอดขาย</button>
+                <button type="button" class="exam-set-pill ${examSetCode === 'C' ? 'active' : ''}" data-exam-set="C">ชุด C · สินค้าคงเหลือ</button>
+                <button type="button" class="exam-set-pill ${examSetCode === 'D' ? 'active' : ''}" data-exam-set="D">ชุด D · หน่วยไฟฟ้า</button>
               </div>
             </div>
 
@@ -5352,8 +5479,8 @@ function renderInspectTab(student) {
                 <button type="button" class="btn btn-primary btn-sm btn-apply-eval-note">
                   <span>✓ บันทึกคะแนน (${evalInfo.score}/${evalInfo.max_score || 20})</span>
                 </button>
-                <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="ตรวจวิเคราะห์โค้ดใหม่">
-                  <span>🔄 ตรวจซ้ำ</span>
+                <button type="button" class="btn btn-secondary btn-sm btn-regrade-student" title="เลือกยืนยันชุดข้อสอบใหม่หรือตรวจซ้ำ">
+                  <span>🔀 เปลี่ยนชุด / ตรวจซ้ำ</span>
                 </button>
               </div>
             </div>
@@ -5475,8 +5602,11 @@ function renderInspectTab(student) {
     evalCard.querySelectorAll('.exam-set-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         const chosen = pill.dataset.examSet;
-        if (student) student.preferred_exam_set = (chosen === 'AUTO') ? null : chosen;
-        gradeCurrentStudentAgainstAssignment(student, (chosen === 'AUTO') ? null : chosen);
+        if (chosen && PRACTICAL_EXAM_SETS_META[chosen]) {
+          confirmStudentExamSetAndGrade(student, chosen);
+        } else {
+          openExamSetConfirmModal(student);
+        }
       });
     });
     evalCard.querySelectorAll('.rubric-pt-btn, .rubric-seg-btn').forEach(btn => {

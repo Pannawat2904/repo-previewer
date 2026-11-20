@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261120-rubric9">
+  <link rel="stylesheet" href="/static/app.css?v=20261120-confirm10">
 </head>
 
 <body>
@@ -837,6 +837,33 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
+  <!-- Exam Set Confirmation Modal (Always confirm Set A / B / C / D before grading Practical Exam) -->
+  <div id="examSetConfirmModal" class="modal-overlay modal-overlay-top" style="display: none;">
+    <div class="modal-card modal-content-lg" style="max-width: 680px;">
+      <div class="modal-header">
+        <div class="modal-header-icon-title">
+          <span class="modal-title-icon">🧪</span>
+          <div>
+            <h3>ยืนยันชุดข้อสอบของนักเรียนก่อนตรวจ (ชุด A, B, C หรือ D)</h3>
+            <span id="examConfirmStudentLabel" class="modal-course-sub">นักเรียน: -</span>
+          </div>
+        </div>
+        <button id="btnCloseExamConfirmModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="examConfirmSuggestBanner" class="exam-confirm-suggest-banner">
+          💡 กรุณาเลือกยืนยันว่านักเรียนคนนี้ได้รับข้อสอบปฏิบัติชุดใด เพื่อให้ระบบตรวจและให้คะแนนตามตาราง Rubric (เต็ม 20 คะแนน) ได้ตรงชุด
+        </div>
+        <div id="examConfirmCardsGrid" class="exam-confirm-cards-grid">
+          <!-- Populated dynamically with Set A, B, C, D cards -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCancelExamConfirmModal" class="btn btn-secondary">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Global Window Drag-and-Drop Overlay -->
   <div id="windowDragOverlay" class="window-drag-overlay" style="display: none;">
@@ -866,7 +893,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261120-rubric9"></script>
+  <script src="/static/app.js?v=20261120-confirm10"></script>
 </body>
 
 </html>
