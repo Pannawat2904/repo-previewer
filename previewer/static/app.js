@@ -5425,6 +5425,93 @@ function highlightSyntax(rawCode, ext) {
   return escaped;
 }
 
+function getStudentPythonFilesList(student) {
+  if (!student) return [];
+  const pyInfo = student.python_info || (student.local_bundle && student.local_bundle.python_info) || null;
+  if (pyInfo && Array.isArray(pyInfo.files) && pyInfo.files.length > 0) {
+    return pyInfo.files;
+  }
+  if (state.pyCurrentStudentKey === student.key && elements.pyCodeEditor && elements.pyCodeEditor.value) {
+    const fallbackName = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value)
+      || (student.raw_input || 'main.py').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '');
+    return [{
+      path: fallbackName,
+      name: fallbackName,
+      content: elements.pyCodeEditor.value,
+      analysis: { syntax_valid: true },
+    }];
+  }
+  return [];
+}
+
+function buildInlineCodePreviewHtml(student) {
+  const files = getStudentPythonFilesList(student);
+  if (files.length === 0) {
+    return `
+      <div class="eval-code-preview-card">
+        <div class="eval-code-preview-header">
+          <div class="eval-code-header-left">
+            <span>🐍</span>
+            <span class="eval-code-file-title">โค้ดของนักเรียน</span>
+          </div>
+          <div class="eval-code-header-right">
+            <button type="button" class="btn btn-secondary btn-xs btn-jump-to-studio">▶ เปิดหน้าโค้ด</button>
+          </div>
+        </div>
+        <div class="eval-code-preview-body" style="align-items:center; justify-content:center; padding:24px; color:#94a3b8;">
+          กำลังโหลดโค้ดของนักเรียน...
+        </div>
+      </div>
+    `;
+  }
+
+  const selectedPath = (student.inspect_selected_file && files.some(f => f.path === student.inspect_selected_file))
+    ? student.inspect_selected_file
+    : files[0].path;
+  const activeFile = files.find(f => f.path === selectedPath) || files[0];
+  const rawCode = (state.pyCurrentStudentKey === student.key && state.pyCurrentFilePath === activeFile.path && elements.pyCodeEditor && elements.pyCodeEditor.value)
+    ? elements.pyCodeEditor.value
+    : (activeFile.content || '');
+  const lines = rawCode.replace(/\r\n/g, '\n').split('\n');
+  const lineNums = lines.map((_, i) => i + 1).join('\n');
+  const highlighted = highlightPythonCode(rawCode);
+  const analysis = activeFile.analysis || {};
+  const hasSyntaxErr = analysis.syntax_valid === false && analysis.syntax_error;
+
+  const fileSelectorHtml = files.length > 1
+    ? `<select class="eval-code-file-select">${files.map(f => `<option value="${escapeHtml(f.path)}" ${f.path === activeFile.path ? 'selected' : ''}>🐍 ${escapeHtml(f.path)}</option>`).join('')}</select>`
+    : `<span class="eval-code-file-title">🐍 ${escapeHtml(activeFile.path)}</span>`;
+
+  const syntaxBadgeHtml = hasSyntaxErr
+    ? `<span class="rubric-score-badge lvl-poor">❌ SyntaxError บรรทัด ${analysis.syntax_error.lineno || '?'}</span>`
+    : `<span class="rubric-score-badge lvl-excellent">✓ ${lines.length} บรรทัด</span>`;
+
+  const errBarHtml = hasSyntaxErr
+    ? `<div class="eval-code-syntax-err-bar">❌ บรรทัดที่ ${analysis.syntax_error.lineno || '?'}: ${escapeHtml(analysis.syntax_error.message || 'SyntaxError')}</div>`
+    : '';
+
+  return `
+    <div class="eval-code-preview-card">
+      <div class="eval-code-preview-header">
+        <div class="eval-code-header-left">
+          ${fileSelectorHtml}
+          ${syntaxBadgeHtml}
+        </div>
+        <div class="eval-code-header-right">
+          <button type="button" class="btn btn-secondary btn-xs btn-jump-to-studio" title="สลับไปหน้ารันและทดลองแก้โค้ด">
+            ▶ รัน / ทดสอบโค้ด
+          </button>
+        </div>
+      </div>
+      <div class="eval-code-preview-body">
+        <div class="eval-code-line-nums">${lineNums}</div>
+        <pre class="eval-code-pre"><code>${highlighted}</code></pre>
+      </div>
+      ${errBarHtml}
+    </div>
+  `;
+}
+
 // -------------------------------------------------------------
 // Tab 3: Observations Rendering (Web + Python OOP Analysis)
 // -------------------------------------------------------------
@@ -5486,58 +5573,62 @@ function renderInspectTab(student) {
             </div>
           </div>
 
-          <!-- ตาราง Rubric 6 ข้อ แบบคลีน ดูครบในหน้าเดียว -->
-          <div class="rubric-clean-table">
-            <div class="rubric-table-head">
-              <div>รายการประเมิน (6 หัวข้อ)</div>
-              <div>คลิกเลือกระดับคะแนนรายข้อ</div>
-              <div style="text-align:right;">คะแนนที่ได้</div>
-            </div>
-            ${evalInfo.rubric_scores.map(r => {
-              const lvl = getCriterionLevelInfo(r.score, r.max_score);
-              const cleanTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
-              const segBtns = [];
-              for (let p = 0; p <= r.max_score; p++) {
-                const pLvl = getCriterionLevelInfo(p, r.max_score);
-                const shortLbl = (r.max_score === 4 && p === 0) ? 'ไม่มี' : pLvl.label;
-                segBtns.push(`
-                  <button type="button" class="rubric-seg-btn ${Number(r.score) === p ? `active ${pLvl.cls}` : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="คลิกเพื่อให้ ${p}/${r.max_score} คะแนน (${shortLbl})">
-                    <span class="seg-pt">${p}</span>
-                    <span class="seg-lbl">${shortLbl}</span>
-                  </button>
-                `);
-              }
-              return `
-                <div class="rubric-table-row">
-                  <div class="rubric-row-info">
-                    <span class="rubric-row-num">${r.id}</span>
-                    <div class="rubric-row-text">
-                      <div class="rubric-row-title">${escapeHtml(cleanTitle)}</div>
-                      <div class="rubric-row-ev">${escapeHtml(r.evidence || r.feedback || '')}</div>
+          <!-- แบ่งครึ่งซ้าย-ขวา: ตาราง Rubric 6 ข้อ (ซ้าย) คู่กับ พรีวิวโค้ดของนักเรียน (ขวา) -->
+          <div class="eval-rubric-code-split">
+            <div class="rubric-clean-table">
+              <div class="rubric-table-head">
+                <div>รายการประเมิน (6 หัวข้อ)</div>
+                <div>คลิกเลือกระดับคะแนนรายข้อ</div>
+                <div style="text-align:right;">คะแนนที่ได้</div>
+              </div>
+              ${evalInfo.rubric_scores.map(r => {
+                const lvl = getCriterionLevelInfo(r.score, r.max_score);
+                const cleanTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
+                const segBtns = [];
+                for (let p = 0; p <= r.max_score; p++) {
+                  const pLvl = getCriterionLevelInfo(p, r.max_score);
+                  const shortLbl = (r.max_score === 4 && p === 0) ? 'ไม่มี' : pLvl.label;
+                  segBtns.push(`
+                    <button type="button" class="rubric-seg-btn ${Number(r.score) === p ? `active ${pLvl.cls}` : ''}" data-crit-id="${r.id}" data-crit-pt="${p}" title="คลิกเพื่อให้ ${p}/${r.max_score} คะแนน (${shortLbl})">
+                      <span class="seg-pt">${p}</span>
+                      <span class="seg-lbl">${shortLbl}</span>
+                    </button>
+                  `);
+                }
+                return `
+                  <div class="rubric-table-row">
+                    <div class="rubric-row-info">
+                      <span class="rubric-row-num">${r.id}</span>
+                      <div class="rubric-row-text">
+                        <div class="rubric-row-title">${escapeHtml(cleanTitle)}</div>
+                        <div class="rubric-row-ev">${escapeHtml(r.evidence || r.feedback || '')}</div>
+                      </div>
+                    </div>
+                    <div class="rubric-seg-group">
+                      ${segBtns.join('')}
+                    </div>
+                    <div class="rubric-row-score-cell">
+                      <span class="rubric-row-score-num">${r.score} / ${r.max_score}</span>
+                      <span class="rubric-score-badge ${lvl.cls}">${escapeHtml(lvl.label)}</span>
                     </div>
                   </div>
-                  <div class="rubric-seg-group">
-                    ${segBtns.join('')}
-                  </div>
-                  <div class="rubric-row-score-cell">
-                    <span class="rubric-row-score-num">${r.score} / ${r.max_score}</span>
-                    <span class="rubric-score-badge ${lvl.cls}">${escapeHtml(lvl.label)}</span>
-                  </div>
+                `;
+              }).join('')}
+              <div class="rubric-table-footer">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.74rem; color:#94a3b8;">
+                  <span><strong>เกณฑ์:</strong></span>
+                  <span style="color:#6ee7b7;">● 17–20 ดีมาก</span>
+                  <span style="color:#7dd3fc;">● 13–16 ดี</span>
+                  <span style="color:#fcd34d;">● 9–12 พอใช้</span>
+                  <span style="color:#fca5a5;">● 0–8 ปรับปรุง</span>
                 </div>
-              `;
-            }).join('')}
-            <div class="rubric-table-footer">
-              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:0.76rem; color:#94a3b8;">
-                <span><strong>เกณฑ์ระดับคุณภาพ:</strong></span>
-                <span style="color:#6ee7b7;">● 17–20 ดีมาก</span>
-                <span style="color:#7dd3fc;">● 13–16 ดี</span>
-                <span style="color:#fcd34d;">● 9–12 พอใช้</span>
-                <span style="color:#fca5a5;">● 0–8 ปรับปรุง</span>
-              </div>
-              <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:0.84rem; color:#e2e8f0;">รวมคะแนนที่ได้: <strong style="font-size:1rem; color:#fff;">${evalInfo.score} / ${evalInfo.max_score || 20}</strong> (${escapeHtml(cleanStatusWord)})</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:0.84rem; color:#e2e8f0;">รวม: <strong style="font-size:1rem; color:#fff;">${evalInfo.score} / ${evalInfo.max_score || 20}</strong> (${escapeHtml(cleanStatusWord)})</span>
+                </div>
               </div>
             </div>
+
+            ${buildInlineCodePreviewHtml(student)}
           </div>
         </div>
       `;
@@ -5616,6 +5707,16 @@ function renderInspectTab(student) {
         updateStudentRubricCriterionScore(student, examSetCode, critId, pt);
       });
     });
+    evalCard.querySelectorAll('.btn-jump-to-studio').forEach(btn => {
+      btn.addEventListener('click', () => switchTab('preview'));
+    });
+    const fileSelectInEval = evalCard.querySelector('.eval-code-file-select');
+    if (fileSelectInEval) {
+      fileSelectInEval.addEventListener('change', (e) => {
+        student.inspect_selected_file = e.target.value;
+        renderInspectTab(student);
+      });
+    }
 
     container.appendChild(evalCard);
   } else {
