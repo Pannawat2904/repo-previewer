@@ -2128,12 +2128,38 @@ function toggleStudioPromptPane() {
   }
 }
 
+function resolveStudentCodeAndFilename(student) {
+  let code = '';
+  let filename = (student && student.raw_input ? student.raw_input.replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '').trim() : '') || 'main.py';
+
+  if (student && state.pyCurrentStudentKey === student.key && elements.pyCodeEditor && elements.pyCodeEditor.value.trim()) {
+    code = elements.pyCodeEditor.value;
+    if (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) {
+      filename = elements.pyEntryFileSelect.value;
+    }
+    return { code, filename };
+  }
+
+  const pyFiles = getStudentPythonFilesList(student);
+  if (pyFiles.length > 0) {
+    const selectedPath = (student && student.inspect_selected_file && pyFiles.some(f => f.path === student.inspect_selected_file))
+      ? student.inspect_selected_file
+      : pyFiles[0].path;
+    const targetFile = pyFiles.find(f => f.path === selectedPath) || pyFiles[0];
+    code = targetFile.content || '';
+    filename = targetFile.path || targetFile.name || filename;
+  }
+
+  return { code, filename };
+}
+
 function openExamSetConfirmModal(student) {
   if (!student) student = getCurrentStudent();
   if (!student || !elements.examSetConfirmModal) return;
 
-  const currentCode = (elements.pyCodeEditor && elements.pyCodeEditor.value) || state.pyOriginalCode || '';
-  const currentFile = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) || student.raw_input || '';
+  const resolved = resolveStudentCodeAndFilename(student);
+  const currentCode = resolved.code || '';
+  const currentFile = resolved.filename || student.raw_input || '';
   const suggestedSet = detectClientPracticalExamSet(currentCode, currentFile, student.student_name || '', null);
   const suggestedMeta = PRACTICAL_EXAM_SETS_META[suggestedSet] || PRACTICAL_EXAM_SETS_META.A;
   const currentConfirmed = student.confirmed_exam_set || null;
@@ -2637,15 +2663,9 @@ async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = 
   }
 
   try {
-    let codeToGrade = '';
-    let filename = 'work4_product_class.py';
-
-    if (elements.pyCodeEditor && elements.pyCodeEditor.value.trim()) {
-      codeToGrade = elements.pyCodeEditor.value.trim();
-      if (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value) {
-        filename = elements.pyEntryFileSelect.value;
-      }
-    }
+    const resolved = resolveStudentCodeAndFilename(student);
+    const codeToGrade = (resolved.code && resolved.code.trim()) ? resolved.code : '# นักเรียนส่งไฟล์ว่างหรือไม่มีโค้ด Python\n';
+    const filename = resolved.filename || 'work5_exam.py';
 
     const globalApiKey = getSavedGlobalGeminiKey();
     const payload = {
@@ -2653,7 +2673,7 @@ async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = 
       assignment_id: activeId,
       owner: student.owner,
       repo: student.repo,
-      code: codeToGrade || undefined,
+      code: codeToGrade,
       filename: filename,
       prompt: promptToUse,
       api_key: globalApiKey || undefined,
@@ -4308,34 +4328,53 @@ async function loadPreviewForStudent(student) {
 
   try {
     let data = null;
-    const res = await fetch(`/api/preview/${student.owner}/${student.repo}`);
-    if (res.ok) {
-      data = await res.json();
-    } else if (student.local_bundle && student.local_bundle.preview) {
+    const fallbackPyInfo = student.python_info
+      || (student.local_bundle && student.local_bundle.python_info)
+      || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.python_info)
+      || null;
+    const isLocalPythonUpload = (student.source_type === 'upload' || student.owner === 'local-upload')
+      && !student.has_web
+      && fallbackPyInfo
+      && Array.isArray(fallbackPyInfo.files)
+      && fallbackPyInfo.files.length > 0;
+
+    if (isLocalPythonUpload) {
       data = {
-        ...student.local_bundle.preview,
-        has_python: student.has_python,
-        python_info: student.python_info || student.local_bundle.python_info,
+        ...(student.local_bundle && student.local_bundle.preview ? student.local_bundle.preview : {}),
+        has_web: false,
+        has_python: true,
+        python_info: fallbackPyInfo,
       };
     } else {
-      const errData = await res.json().catch(() => ({}));
-      elements.hasWebBadge.className = 'badge badge-warning';
-      elements.hasWebBadge.innerText = 'โหลดไม่สำเร็จ';
-      elements.noWebNotice.style.display = 'flex';
-      elements.noWebNotice.querySelector('h3').innerText = 'ไม่สามารถดาวน์โหลด repository ได้';
-      elements.noWebNotice.querySelector('p').innerText = errData.detail || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ GitHub';
-      elements.btnSwitchToCode.style.display = 'none';
-      elements.iframeContainer.style.display = 'none';
-      if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
-      elements.previewIframe.src = 'about:blank';
-      student.preview_url = null;
-      return;
+      const res = await fetch(`/api/preview/${student.owner}/${student.repo}`);
+      if (res.ok) {
+        data = await res.json();
+      } else if (student.local_bundle || fallbackPyInfo) {
+        data = {
+          ...(student.local_bundle && student.local_bundle.preview ? student.local_bundle.preview : {}),
+          has_python: !!(student.has_python || (fallbackPyInfo && fallbackPyInfo.has_python)),
+          python_info: fallbackPyInfo,
+        };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        elements.hasWebBadge.className = 'badge badge-warning';
+        elements.hasWebBadge.innerText = 'โหลดไม่สำเร็จ';
+        elements.noWebNotice.style.display = 'flex';
+        elements.noWebNotice.querySelector('h3').innerText = 'ไม่สามารถดาวน์โหลด repository ได้';
+        elements.noWebNotice.querySelector('p').innerText = errData.detail || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ GitHub';
+        elements.btnSwitchToCode.style.display = 'none';
+        elements.iframeContainer.style.display = 'none';
+        if (elements.pythonPreviewStudio) elements.pythonPreviewStudio.style.display = 'none';
+        elements.previewIframe.src = 'about:blank';
+        student.preview_url = null;
+        return;
+      }
     }
 
     if (data.python_info) {
       student.python_info = data.python_info;
-    } else if (student.local_bundle && student.local_bundle.python_info) {
-      student.python_info = student.local_bundle.python_info;
+    } else if (fallbackPyInfo) {
+      student.python_info = fallbackPyInfo;
     }
     student.has_python = !!(data.has_python || (student.python_info && student.python_info.has_python));
 
@@ -4999,12 +5038,32 @@ async function loadFileTreeForStudent(student) {
   if (!student.owner || !student.repo) return;
   try {
     let treeData = [];
-    const res = await fetch(`/api/files/tree/${student.owner}/${student.repo}`);
-    if (res.ok) {
-      const data = await res.json();
-      treeData = data.tree || [];
-    } else if (student.local_bundle && student.local_bundle.tree) {
+    const isLocalWithTree = (student.source_type === 'upload' || student.owner === 'local-upload')
+      && student.local_bundle
+      && Array.isArray(student.local_bundle.tree)
+      && student.local_bundle.tree.length > 0;
+
+    if (isLocalWithTree) {
       treeData = student.local_bundle.tree;
+    } else {
+      const res = await fetch(`/api/files/tree/${student.owner}/${student.repo}`);
+      if (res.ok) {
+        const data = await res.json();
+        treeData = data.tree || [];
+      } else if (student.local_bundle && student.local_bundle.tree) {
+        treeData = student.local_bundle.tree;
+      } else {
+        const pyFiles = getStudentPythonFilesList(student);
+        if (pyFiles.length > 0) {
+          treeData = pyFiles.map(f => ({
+            name: f.name || f.path || 'main.py',
+            path: f.path || f.name || 'main.py',
+            type: 'file',
+            file_type: 'text',
+            extension: 'py',
+          }));
+        }
+      }
     }
 
     state.fileTree = treeData;
@@ -5028,11 +5087,19 @@ async function loadInspectForStudent(student) {
   if (!student.owner || !student.repo) return;
   try {
     let data = null;
-    const res = await fetch(`/api/inspect/${student.owner}/${student.repo}`);
-    if (res.ok) {
-      data = await res.json();
-    } else if (student.local_bundle && student.local_bundle.inspect) {
+    const isLocalWithInspect = (student.source_type === 'upload' || student.owner === 'local-upload')
+      && student.local_bundle
+      && student.local_bundle.inspect;
+
+    if (isLocalWithInspect) {
       data = student.local_bundle.inspect;
+    } else {
+      const res = await fetch(`/api/inspect/${student.owner}/${student.repo}`);
+      if (res.ok) {
+        data = await res.json();
+      } else if (student.local_bundle && student.local_bundle.inspect) {
+        data = student.local_bundle.inspect;
+      }
     }
 
     if (data) {
@@ -5531,17 +5598,44 @@ function findFirstTextFile(nodes) {
   return null;
 }
 
+function findLocalStudentFileContent(student, relPath) {
+  if (!student || !relPath) return undefined;
+  const pyFiles = getStudentPythonFilesList(student);
+  const matchedFile = pyFiles.find(f => f && (f.path === relPath || f.name === relPath));
+  if (matchedFile && typeof matchedFile.content === 'string') {
+    return matchedFile.content;
+  }
+  const pyInfo = student.python_info
+    || (student.local_bundle && student.local_bundle.python_info)
+    || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.python_info);
+  if (pyInfo && pyInfo.support_files && pyInfo.support_files[relPath] !== undefined) {
+    return pyInfo.support_files[relPath];
+  }
+  return undefined;
+}
+
 async function openFileContent(owner, repo, relPath) {
   state.activeFilePath = relPath;
   elements.activeFilePath.innerText = relPath;
   elements.codeContentWrap.innerHTML = `<div class="code-placeholder">กำลังเปิดอ่านไฟล์...</div>`;
 
   try {
+    const cur = getCurrentStudent();
+    if (owner === 'local-upload' && cur) {
+      const localContent = findLocalStudentFileContent(cur, relPath);
+      if (localContent !== undefined) {
+        const ext = (relPath.split('.').pop() || '').toLowerCase();
+        elements.activeFileIcon.innerText = ext === 'py' ? '🐍' : '📄';
+        elements.activeFileStats.innerText = `${localContent.split('\n').length} บรรทัด • utf-8`;
+        renderSyntaxCode(localContent, ext);
+        return;
+      }
+    }
+
     const res = await fetch(`/api/files/content/${owner}/${repo}?path=${encodeURIComponent(relPath)}`);
     if (!res.ok) {
       // Fallback กรณีไฟล์อัปโหลดถูกเก็บไว้ในหน่วยความจำของ client (local_bundle / support_files)
-      const cur = getCurrentStudent();
-      const supportContent = cur && cur.python_info && cur.python_info.support_files && cur.python_info.support_files[relPath];
+      const supportContent = findLocalStudentFileContent(cur, relPath);
       if (supportContent !== undefined) {
         const ext = (relPath.split('.').pop() || '').toLowerCase();
         elements.activeFileIcon.innerText = ext === 'py' ? '🐍' : '📄';
@@ -5691,9 +5785,23 @@ function highlightSyntax(rawCode, ext) {
 
 function getStudentPythonFilesList(student) {
   if (!student) return [];
-  const pyInfo = student.python_info || (student.local_bundle && student.local_bundle.python_info) || null;
+  const pyInfo = student.python_info
+    || (student.local_bundle && student.local_bundle.python_info)
+    || (student.local_bundle && student.local_bundle.inspect && student.local_bundle.inspect.python_info)
+    || null;
   if (pyInfo && Array.isArray(pyInfo.files) && pyInfo.files.length > 0) {
     return pyInfo.files;
+  }
+  if (pyInfo && pyInfo.support_files && typeof pyInfo.support_files === 'object') {
+    const entries = Object.entries(pyInfo.support_files);
+    if (entries.length > 0) {
+      return entries.map(([path, content]) => ({
+        path,
+        name: path.split('/').pop() || path,
+        content: String(content || ''),
+        analysis: { syntax_valid: true },
+      }));
+    }
   }
   if (state.pyCurrentStudentKey === student.key && elements.pyCodeEditor && elements.pyCodeEditor.value) {
     const fallbackName = (elements.pyEntryFileSelect && elements.pyEntryFileSelect.value)
@@ -6068,29 +6176,65 @@ function renderInspectTab(student) {
 
     container.appendChild(evalCard);
   } else {
+    const isPracticalExamMode = isActiveAssignmentPracticalExam();
+    const activeAssignTitle = (state.assignment && state.assignment.title)
+      ? state.assignment.title
+      : 'งานที่กำหนด';
+    const descHtml = isPracticalExamMode
+      ? 'ข้อสอบปฏิบัติ 4 ชุด (ชุด A, B, C, D) • ระบบจะให้ครูยืนยันชุดข้อสอบของนักเรียนก่อนประเมินตามตาราง Rubric Score 6 หัวข้อ (20 คะแนน)'
+      : `เปรียบเทียบโค้ด Python ของนักเรียนกับโจทย์ (${escapeHtml(activeAssignTitle)}) พร้อมวิเคราะห์คะแนนตามเกณฑ์`;
+    const inlineCodeHtml = buildInlineCodePreviewHtml(student);
+
     const uncheckCard = document.createElement('div');
     uncheckCard.className = 'inspect-card';
     uncheckCard.style.cssText = 'border: 1px dashed var(--color-primary, #3b82f6); background: rgba(59, 130, 246, 0.04);';
     uncheckCard.innerHTML = `
-      <div class="inspect-card-body" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
-        <div>
-          <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-            <span>🎯</span>
-            <span>ตรวจงานคนนี้ตามโจทย์อัตโนมัติด้วย AI</span>
+      <div class="inspect-card-body">
+        <div class="${inlineCodeHtml ? 'eval-rubric-code-split' : ''}">
+          <div class="eval-rubric-left-col" style="display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 12px 6px;">
+            <div>
+              <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                <span>🎯</span>
+                <span>ตรวจงานคนนี้ตามโจทย์อัตโนมัติด้วย AI</span>
+              </div>
+              <div style="font-size: 0.84rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.5;">
+                ${descHtml}
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-primary btn-sm btn-trigger-grade-student" style="padding: 8px 16px; font-weight: 700;">
+                <span>⚡ เริ่มตรวจตามโจทย์</span>
+              </button>
+            </div>
           </div>
-          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 3px;">
-            เปรียบเทียบโค้ด Python ของนักเรียนกับโจทย์ (คลาส Product, Property, Method show_info, และการสร้าง Object 2 รายการ)
-          </div>
+          ${inlineCodeHtml}
         </div>
-        <button type="button" class="btn btn-primary btn-sm btn-trigger-grade-student">
-          <span>⚡ เริ่มตรวจตามโจทย์</span>
-        </button>
       </div>
     `;
     const btnTrigger = uncheckCard.querySelector('.btn-trigger-grade-student');
     if (btnTrigger) {
       btnTrigger.addEventListener('click', () => {
         gradeCurrentStudentAgainstAssignment(student);
+      });
+    }
+    const inlineFileSelect = uncheckCard.querySelector('#evalInlineFileSelect');
+    if (inlineFileSelect) {
+      inlineFileSelect.addEventListener('change', (e) => {
+        state.evalPreviewFileIdx = parseInt(e.target.value, 10) || 0;
+        renderInspectTab(student);
+      });
+    }
+    const btnCopyInlineCode = uncheckCard.querySelector('#btnCopyEvalInlineCode');
+    if (btnCopyInlineCode) {
+      btnCopyInlineCode.addEventListener('click', () => {
+        const files = getStudentPythonFilesList(student);
+        const idx = Math.min(Math.max(0, state.evalPreviewFileIdx || 0), Math.max(0, files.length - 1));
+        const activeFile = files[idx];
+        if (activeFile && activeFile.content) {
+          navigator.clipboard.writeText(activeFile.content).then(() => {
+            showToast('📋 คัดลอกโค้ดของนักเรียนแล้ว');
+          });
+        }
       });
     }
     container.appendChild(uncheckCard);

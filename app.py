@@ -414,18 +414,22 @@ async def api_grade_assignment(req: AssignmentGradeRequest):
     resolved_filename = req.filename or "work4_product_class.py"
 
     # หากไม่ได้ส่ง code มาตรง ๆ ให้ไปดึงจากไฟล์ของ repo ที่แคชไว้
-    if not code and req.owner and req.repo:
-        repo_dir = await ensure_repo_cached(req.owner, req.repo)
-        py_info = inspect_python_project(repo_dir)
-        files = py_info.get("files", [])
-        if files:
-            target_file = None
-            if req.filename:
-                target_file = next((f for f in files if f["name"].lower() == req.filename.lower() or req.filename.lower() in f["path"].lower()), None)
-            if not target_file:
-                target_file = files[0]
-            code = target_file.get("content", "")
-            resolved_filename = target_file.get("path", resolved_filename)
+    if (code is None or not str(code).strip()) and req.owner and req.repo:
+        try:
+            repo_dir = await ensure_repo_cached(req.owner, req.repo)
+            py_info = inspect_python_project(repo_dir)
+            files = py_info.get("files", [])
+            if files:
+                target_file = None
+                if req.filename:
+                    target_file = next((f for f in files if f["name"].lower() == req.filename.lower() or req.filename.lower() in f["path"].lower()), None)
+                if not target_file:
+                    target_file = files[0]
+                code = target_file.get("content", "")
+                resolved_filename = target_file.get("path", resolved_filename)
+        except HTTPException:
+            if code is None:
+                raise
 
     if not code:
         raise HTTPException(status_code=400, detail="ไม่พบโค้ด Python สำหรับตรวจงาน")

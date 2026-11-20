@@ -419,6 +419,24 @@ print("รวมหน่วยไฟฟ้าทั้ง 3 หลัง:", tot
             self.assertEqual(body["max_score"], 20)
             self.assertEqual(len(body["rubric_scores"]), 6)
 
+            # 4) ทดสอบกรณี Vercel cold-start ที่แคช /tmp ของ local-upload หายไป แต่ client ส่ง code มาด้วย -> ต้องตรวจผ่าน 200 OK ไม่ติด 404
+            resp_expired_cache = client.post(
+                "/api/assignment/grade",
+                json={
+                    "course_id": "course-python-oop-1",
+                    "assignment_id": "work-5",
+                    "owner": "local-upload",
+                    "repo": "kanwara_004_expired_serverless_cache",
+                    "code": benjawan_code,
+                    "filename": "kanwara_004.py",
+                    "prompt": WORK5_PRACTICAL_EXAM_PROMPT,
+                    "student_name": "kanwara_004",
+                    "exam_set": "B",
+                },
+            )
+            self.assertEqual(resp_expired_cache.status_code, 200)
+            self.assertEqual(resp_expired_cache.json()["exam_set"], "B")
+
 
 if __name__ == "__main__":
     unittest.main()
