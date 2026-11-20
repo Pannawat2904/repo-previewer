@@ -307,6 +307,160 @@ function formatPromptSnippet(promptText, maxLines = 4) {
   return lines.slice(0, maxLines).join('\n');
 }
 
+// -------------------------------------------------------------
+// Persistent Course Students & Uploaded Files Storage (localStorage + IndexedDB)
+// ทำให้รีเฟรชหน้าเว็บแล้วไฟล์ที่อัปโหลด รายชื่อนักเรียน โค้ด และผลตรวจไม่หาย
+// -------------------------------------------------------------
+const COURSE_STUDENTS_STORAGE_PREFIX = 'repo_previewer_course_students_v1_';
+const IDB_DB_NAME = 'repo_previewer_db_v1';
+const IDB_STORE_NAME = 'course_students_store';
+
+function openPreviewerIndexedDB() {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') {
+      resolve(null);
+      return;
+    }
+    try {
+      const req = indexedDB.open(IDB_DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+          db.createObjectStore(IDB_STORE_NAME);
+        }
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+async function saveCourseSnapshotToIndexedDB(courseId, snapshot) {
+  const db = await openPreviewerIndexedDB();
+  if (!db) return;
+  try {
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(snapshot, courseId);
+  } catch (e) {}
+}
+
+async function loadCourseSnapshotFromIndexedDB(courseId) {
+  const db = await openPreviewerIndexedDB();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+      const req = tx.objectStore(IDB_STORE_NAME).get(courseId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+function serializeStudentForStorage(student, stripLargeBundle = false) {
+  if (!student || typeof student !== 'object') return null;
+  const copy = {
+    key: student.key,
+    owner: student.owner,
+    repo: student.repo,
+    student_name: student.student_name,
+    raw_input: student.raw_input,
+    canonical_url: student.canonical_url,
+    archive_url: student.archive_url,
+    original_url: student.original_url,
+    is_valid: student.is_valid !== false,
+    source_type: student.source_type,
+    status: student.status === 'loading' ? 'ready' : (student.status || 'ready'),
+    has_web: !!student.has_web,
+    has_python: !!student.has_python,
+    viewed: !!student.viewed,
+    note: student.note || '',
+    teacher_comment: student.teacher_comment || '',
+    saved_score_at: student.saved_score_at || null,
+    confirmed_exam_set: student.confirmed_exam_set || null,
+    preferred_exam_set: student.preferred_exam_set || null,
+    assignment_evaluation: student.assignment_evaluation || null,
+    ai_analysis: student.ai_analysis || null,
+    observations: Array.isArray(student.observations) ? student.observations : [],
+    meta: student.meta || {},
+    console_logs: [],
+    network_errors: [],
+  };
+  if (!stripLargeBundle) {
+    copy.python_info = student.python_info || null;
+    copy.local_bundle = student.local_bundle || null;
+  } else if (student.python_info) {
+    copy.python_info = {
+      has_python: student.python_info.has_python,
+      entry_file: student.python_info.entry_file,
+      total_python_files: student.python_info.total_python_files,
+      oop_summary: student.python_info.oop_summary,
+      files: (student.python_info.files || []).map(f => ({
+        path: f.path,
+        name: f.name,
+        size: f.size,
+        lines: f.lines,
+        content: (f.content || '').slice(0, 60000),
+        analysis: f.analysis,
+      })),
+    };
+  }
+  return copy;
+}
+
+function persistCourseStudentsState(course) {
+  if (!course || !course.id) return;
+  const studentsList = Array.isArray(course.students) ? course.students : [];
+  const fullSnapshot = {
+    courseId: course.id,
+    currentIndex: typeof course.currentIndex === 'number' ? course.currentIndex : -1,
+    activeTab: state.activeTab || 'preview',
+    bulkLinksText: course.bulkLinksText || '',
+    updatedAt: Date.now(),
+    students: studentsList.map(s => serializeStudentForStorage(s, false)).filter(Boolean),
+  };
+
+  // 1. บันทึกลง IndexedDB เสมอ (รองรับไฟล์ขนาดใหญ่ไม่จำกัด 5MB)
+  saveCourseSnapshotToIndexedDB(course.id, fullSnapshot);
+
+  // 2. บันทึกลง localStorage เพื่อให้กู้คืนทันทีแบบ Synchronous (0ms) ตอนกด Refresh
+  const storageKey = COURSE_STUDENTS_STORAGE_PREFIX + course.id;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(fullSnapshot));
+  } catch (quotaErr) {
+    try {
+      const compactSnapshot = {
+        ...fullSnapshot,
+        students: studentsList.map(s => serializeStudentForStorage(s, true)).filter(Boolean),
+      };
+      localStorage.setItem(storageKey, JSON.stringify(compactSnapshot));
+    } catch (e2) {}
+  }
+}
+
+function applyRestoredCourseSnapshot(course, snapshot) {
+  if (!course || !snapshot || !Array.isArray(snapshot.students)) return false;
+  const restoredStudents = snapshot.students.map(s => {
+    const item = {
+      ...s,
+      console_logs: Array.isArray(s.console_logs) ? s.console_logs : [],
+      network_errors: Array.isArray(s.network_errors) ? s.network_errors : [],
+    };
+    hydrateStudentReviewState(item, course.id);
+    return item;
+  });
+  course.students = restoredStudents;
+  course.currentIndex = typeof snapshot.currentIndex === 'number' ? snapshot.currentIndex : (restoredStudents.length > 0 ? 0 : -1);
+  if (snapshot.bulkLinksText && !course.bulkLinksText) {
+    course.bulkLinksText = snapshot.bulkLinksText;
+  }
+  return restoredStudents.length > 0;
+}
+
 async function initCoursesState() {
   // กู้คืนวิชาล่าสุดที่เลือกไว้ถ้าเคยเลือกไว้
   try {
@@ -316,7 +470,9 @@ async function initCoursesState() {
     }
   } catch (e) {}
 
-  // โหลดแคชของโจทย์แต่ละวิชาจาก localStorage เพื่อแสดงผลทันทีแบบไม่มีแล็ก (เรียงตามเลขงาน)
+  let restoredActiveTab = null;
+
+  // โหลดแคชของโจทย์และรายชื่อไฟล์นักเรียนแต่ละวิชาจาก localStorage เพื่อแสดงผลทันทีหลังรีเฟรช
   state.courses.forEach(c => {
     try {
       const cached = localStorage.getItem('repo_previewer_assignments_' + c.id);
@@ -329,11 +485,65 @@ async function initCoursesState() {
         }
       }
     } catch (e) {}
+
+    try {
+      const rawStudentsSnap = localStorage.getItem(COURSE_STUDENTS_STORAGE_PREFIX + c.id);
+      if (rawStudentsSnap) {
+        const parsedSnap = JSON.parse(rawStudentsSnap);
+        applyRestoredCourseSnapshot(c, parsedSnap);
+        if (c.id === state.activeCourseId && parsedSnap && parsedSnap.activeTab) {
+          restoredActiveTab = parsedSnap.activeTab;
+        }
+      }
+    } catch (e) {}
   });
+
+  // ซิงก์รายการนักเรียนของวิชาที่เลือกอยู่เข้าสู่ state ทันที
+  const activeCourse = getActiveCourse();
+  if (activeCourse && Array.isArray(activeCourse.students) && activeCourse.students.length > 0) {
+    state.students = activeCourse.students;
+    state.currentIndex = (typeof activeCourse.currentIndex === 'number' && activeCourse.currentIndex >= 0 && activeCourse.currentIndex < state.students.length)
+      ? activeCourse.currentIndex
+      : 0;
+    if (elements.bulkLinksTextarea && activeCourse.bulkLinksText) {
+      elements.bulkLinksTextarea.value = activeCourse.bulkLinksText;
+    }
+  }
 
   renderCourseSelect();
   renderCourseHub();
   renderAssignmentPickers();
+
+  // หากมีไฟล์นักเรียนที่อัปโหลดค้างไว้ก่อนรีเฟรช ให้เปิดหน้าตรวจงานและเลือกไฟล์ล่าสุดขึ้นมาแสดงทันที
+  if (state.students.length > 0) {
+    setHubSidebarMode(false);
+    renderStudentsList();
+    updateViewedStats();
+    selectStudent(state.currentIndex >= 0 ? state.currentIndex : 0);
+    if (restoredActiveTab && ['preview', 'code', 'inspect', 'scores'].includes(restoredActiveTab)) {
+      switchTab(restoredActiveTab);
+    }
+  } else {
+    // ตรวจสอบเพิ่มเติมใน IndexedDB กรณีชุดไฟล์มีขนาดใหญ่เกิน localStorage
+    for (const c of state.courses) {
+      const idbSnap = await loadCourseSnapshotFromIndexedDB(c.id);
+      if (idbSnap && Array.isArray(idbSnap.students) && idbSnap.students.length > (c.students ? c.students.length : 0)) {
+        applyRestoredCourseSnapshot(c, idbSnap);
+        if (c.id === state.activeCourseId) {
+          state.students = c.students;
+          state.currentIndex = (typeof c.currentIndex === 'number' && c.currentIndex >= 0 && c.currentIndex < state.students.length) ? c.currentIndex : 0;
+          setHubSidebarMode(false);
+          renderCourseSelect();
+          renderStudentsList();
+          updateViewedStats();
+          selectStudent(state.currentIndex);
+          if (idbSnap.activeTab && ['preview', 'code', 'inspect', 'scores'].includes(idbSnap.activeTab)) {
+            switchTab(idbSnap.activeTab);
+          }
+        }
+      }
+    }
+  }
 
   // ดึงโจทย์และเกณฑ์ตรวจล่าสุดของทุกวิชาจากเซิร์ฟเวอร์แบบเบื้องหลัง
   for (const c of state.courses) {
@@ -359,6 +569,7 @@ function syncActiveCourseState() {
   if (elements.bulkLinksTextarea) {
     course.bulkLinksText = elements.bulkLinksTextarea.value;
   }
+  persistCourseStudentsState(course);
 }
 
 function detectCourseTheme(subject) {
@@ -1724,6 +1935,10 @@ function isPracticalExamAssignment(asg) {
   if (Number(asg.max_score) === 20) return true;
   const signals = ['ชุด a', 'ชุด b', 'ชุด c', 'ชุด d', 'สอบปฏิบัติ', 'rubric score', 'dailysales', 'stockproduct', 'electricityrecord'];
   return signals.filter(s => prompt.includes(s)).length >= 2;
+}
+
+function isActiveAssignmentPracticalExam() {
+  return isPracticalExamAssignment(getActiveAssignmentData());
 }
 
 function detectClientPracticalExamSet(code, filename = '', studentName = '', preferredSet = null) {
@@ -6393,6 +6608,7 @@ function switchTab(tabName) {
   } else if (tabName === 'scores') {
     renderScoresMenuTab();
   }
+  syncActiveCourseState();
 }
 
 function setDeviceMode(device) {
@@ -7061,9 +7277,10 @@ function renderInspectTab(student) {
 
     container.appendChild(evalCard);
   } else {
-    const isPracticalExamMode = isActiveAssignmentPracticalExam();
-    const activeAssignTitle = (state.assignment && state.assignment.title)
-      ? state.assignment.title
+    const activeAsg = getActiveAssignmentData();
+    const isPracticalExamMode = isPracticalExamAssignment(activeAsg);
+    const activeAssignTitle = (activeAsg && activeAsg.title)
+      ? activeAsg.title
       : 'งานที่กำหนด';
     const descHtml = isPracticalExamMode
       ? 'ข้อสอบปฏิบัติ 4 ชุด (ชุด A, B, C, D) • ระบบจะให้ครูยืนยันชุดข้อสอบของนักเรียนก่อนประเมินตามตาราง Rubric Score 6 หัวข้อ (20 คะแนน)'
@@ -7102,24 +7319,14 @@ function renderInspectTab(student) {
         gradeCurrentStudentAgainstAssignment(student);
       });
     }
-    const inlineFileSelect = uncheckCard.querySelector('#evalInlineFileSelect');
-    if (inlineFileSelect) {
-      inlineFileSelect.addEventListener('change', (e) => {
-        state.evalPreviewFileIdx = parseInt(e.target.value, 10) || 0;
+    uncheckCard.querySelectorAll('.btn-jump-to-studio').forEach(btn => {
+      btn.addEventListener('click', () => switchTab('preview'));
+    });
+    const fileSelectInUncheck = uncheckCard.querySelector('.eval-code-file-select');
+    if (fileSelectInUncheck) {
+      fileSelectInUncheck.addEventListener('change', (e) => {
+        student.inspect_selected_file = e.target.value;
         renderInspectTab(student);
-      });
-    }
-    const btnCopyInlineCode = uncheckCard.querySelector('#btnCopyEvalInlineCode');
-    if (btnCopyInlineCode) {
-      btnCopyInlineCode.addEventListener('click', () => {
-        const files = getStudentPythonFilesList(student);
-        const idx = Math.min(Math.max(0, state.evalPreviewFileIdx || 0), Math.max(0, files.length - 1));
-        const activeFile = files[idx];
-        if (activeFile && activeFile.content) {
-          navigator.clipboard.writeText(activeFile.content).then(() => {
-            showToast('📋 คัดลอกโค้ดของนักเรียนแล้ว');
-          });
-        }
       });
     }
     container.appendChild(uncheckCard);
