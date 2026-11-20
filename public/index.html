@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261120-analyzing12">
+  <link rel="stylesheet" href="/static/app.css?v=20261120-comments13">
 </head>
 
 <body>
@@ -864,6 +864,31 @@ https://github.com/patvikan24-oss/my-profil-013
     </div>
   </div>
 
+  <!-- Class Score & Explanation Summary Modal (View all saved student scores & comments) -->
+  <div id="classScoreSummaryModal" class="modal-overlay modal-overlay-top" style="display: none;">
+    <div class="modal-card modal-content-lg" style="max-width: 980px;">
+      <div class="modal-header">
+        <div class="modal-header-icon-title">
+          <span class="modal-title-icon">📊</span>
+          <div>
+            <h3>สรุปคะแนนและคอมเมนต์ชี้แจงนักเรียนทั้งหมด</h3>
+            <span id="classSummaryCourseLabel" class="modal-course-sub">รายการคะแนนที่บันทึกไว้สำหรับชี้แจงนักเรียน</span>
+          </div>
+        </div>
+        <button id="btnCloseClassSummaryModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body" id="classSummaryModalBody" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" id="btnExportCsvFromSummary" class="btn btn-primary btn-sm">
+          📥 ส่งออกไฟล์ Excel (CSV) พร้อมคอมเมนต์รายข้อ
+        </button>
+        <button type="button" id="btnDoneClassSummaryModal" class="btn btn-secondary">ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Global Window Drag-and-Drop Overlay -->
   <div id="windowDragOverlay" class="window-drag-overlay" style="display: none;">
@@ -893,7 +918,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261120-analyzing12"></script>
+  <script src="/static/app.js?v=20261120-comments13"></script>
 </body>
 
 </html>

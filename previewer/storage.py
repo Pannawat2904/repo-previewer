@@ -41,8 +41,14 @@ def get_review(repo_key: str) -> dict:
     return reviews.get(repo_key.lower(), {"viewed": False, "note": ""})
 
 
-def save_review(repo_key: str, viewed: Optional[bool] = None, note: Optional[str] = None) -> dict:
-    """บันทึกหรืออัปเดตสถานะ 'ดูแล้ว' และโน้ตย่อของ repo"""
+def save_review(
+    repo_key: str,
+    viewed: Optional[bool] = None,
+    note: Optional[str] = None,
+    teacher_comment: Optional[str] = None,
+    evaluation: Optional[dict] = None,
+) -> dict:
+    """บันทึกหรืออัปเดตสถานะ 'ดูแล้ว' คะแนน และคอมเมนต์ชี้แจงของนักเรียน"""
     clean_key = repo_key.lower()
     with _lock:
         STORAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +65,10 @@ def save_review(repo_key: str, viewed: Optional[bool] = None, note: Optional[str
             current["viewed"] = bool(viewed)
         if note is not None:
             current["note"] = str(note)
+        if teacher_comment is not None:
+            current["teacher_comment"] = str(teacher_comment)
+        if evaluation is not None and isinstance(evaluation, dict):
+            current["evaluation"] = evaluation
 
         data[clean_key] = current
 

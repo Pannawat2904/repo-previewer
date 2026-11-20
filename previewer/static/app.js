@@ -171,6 +171,12 @@ const elements = {
   examConfirmCardsGrid: document.getElementById('examConfirmCardsGrid'),
   btnCloseExamConfirmModal: document.getElementById('btnCloseExamConfirmModal'),
   btnCancelExamConfirmModal: document.getElementById('btnCancelExamConfirmModal'),
+  classScoreSummaryModal: document.getElementById('classScoreSummaryModal'),
+  classSummaryCourseLabel: document.getElementById('classSummaryCourseLabel'),
+  classSummaryModalBody: document.getElementById('classSummaryModalBody'),
+  btnCloseClassSummaryModal: document.getElementById('btnCloseClassSummaryModal'),
+  btnDoneClassSummaryModal: document.getElementById('btnDoneClassSummaryModal'),
+  btnExportCsvFromSummary: document.getElementById('btnExportCsvFromSummary'),
   modalAssignmentTaskSelect: document.getElementById('modalAssignmentTaskSelect'),
   btnAddNewAssignment: document.getElementById('btnAddNewAssignment'),
   btnDeleteAssignment: document.getElementById('btnDeleteAssignment'),
@@ -802,6 +808,17 @@ function setupEventListeners() {
     elements.examSetConfirmModal.addEventListener('click', (e) => {
       if (e.target === elements.examSetConfirmModal) closeExamSetConfirmModal();
     });
+  }
+  [elements.btnCloseClassSummaryModal, elements.btnDoneClassSummaryModal].forEach(btn => {
+    if (btn) btn.addEventListener('click', closeClassScoreSummaryModal);
+  });
+  if (elements.classScoreSummaryModal) {
+    elements.classScoreSummaryModal.addEventListener('click', (e) => {
+      if (e.target === elements.classScoreSummaryModal) closeClassScoreSummaryModal();
+    });
+  }
+  if (elements.btnExportCsvFromSummary) {
+    elements.btnExportCsvFromSummary.addEventListener('click', exportResultsToCsv);
   }
   if (elements.assignmentGradeBadge) {
     elements.assignmentGradeBadge.addEventListener('click', handleGradeBadgeClick);
@@ -2654,6 +2671,11 @@ async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = 
       const evalResult = await res.json();
       evalResult.assignment_id = activeId;
       student.assignment_evaluation = evalResult;
+      if (!student.teacher_comment) {
+        student.teacher_comment = buildAutoExplanationFromEvaluation(student);
+      }
+      persistLocalStudentReview(student);
+      updateStudentItemCard(student);
       updateAssignmentGradeBadge(student);
       renderStudioPromptPane(student);
       showToast(`ตรวจเสร็จสิ้น! ได้คะแนน ${evalResult.score}/${evalResult.max_score} (${evalResult.status_label})`, 'success');
@@ -2717,10 +2739,140 @@ function handleGradeBadgeClick() {
   }
 }
 
-function applyEvaluationNote(student) {
+function buildAutoExplanationFromEvaluation(student) {
+  if (!student || !student.assignment_evaluation) return '';
+  const ev = student.assignment_evaluation;
+  if (ev.is_practical_exam && Array.isArray(ev.rubric_scores)) {
+    const lines = ev.rubric_scores.map(r => {
+      const cleanTitle = String(r.title || '').replace(/^\d+\.\s*/, '');
+      const reason = r.evidence || r.feedback || '';
+      return `${r.id}. ${cleanTitle} (${r.score}/${r.max_score} · ${r.level_label}): ${reason}`;
+    });
+    return lines.join('\n');
+  }
+  if (Array.isArray(ev.checklist) && ev.checklist.length > 0) {
+    return ev.checklist.map((c, idx) => `${idx + 1}. ${c.criterion}: ${c.evidence || c.feedback || (c.passed ? 'ผ่าน' : 'ควรปรับปรุง')}`).join('\n');
+  }
+  return ev.summary || '';
+}
+
+function buildFullStudentExplanationReport(student) {
+  if (!student) return '';
+  const ev = student.assignment_evaluation;
+  const stuName = student.student_name || student.repo || 'นักเรียน';
+  const fileLabel = (student.raw_input || student.repo || '').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '');
+  const commentText = (student.teacher_comment || buildAutoExplanationFromEvaluation(student) || '').trim();
+
+  if (ev && ev.is_practical_exam) {
+    const setCode = ev.exam_set || student.confirmed_exam_set || 'A';
+    const setMeta = PRACTICAL_EXAM_SETS_META[setCode] || PRACTICAL_EXAM_SETS_META.A;
+    const qInfo = getExamQualityLevelInfo(ev.score);
+    return [
+      `📋 ใบชี้แจงคะแนนการสอบปฏิบัติ`,
+      `👤 นักเรียน: ${stuName}${fileLabel ? ` (${fileLabel})` : ''}`,
+      `🧪 ชุดข้อสอบ: ${setMeta.fullTitle} (Class ${setMeta.className})`,
+      `🏆 คะแนนที่ได้: ${ev.score} / ${ev.max_score || 20} คะแนน (ระดับคุณภาพ: ${qInfo.level})`,
+      `----------------------------------------`,
+      `รายละเอียดคะแนนและการชี้แจงรายข้อ:`,
+      commentText || buildAutoExplanationFromEvaluation(student),
+    ].join('\n');
+  }
+
+  const scoreLine = ev ? `${ev.score}/${ev.max_score || 10} คะแนน (${ev.status_label || ''})` : (student.note || 'ยังไม่ได้ให้คะแนน');
+  return [
+    `📋 ใบชี้แจงผลการตรวจงาน`,
+    `👤 นักเรียน: ${stuName}${fileLabel ? ` (${fileLabel})` : ''}`,
+    `🏆 ผลการประเมิน: ${scoreLine}`,
+    commentText ? `----------------------------------------\n💬 คำชี้แจงจากครูผู้สอน:\n${commentText}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+async function copyStudentScoreExplanationReport(student) {
+  if (!student) student = getCurrentStudent();
+  if (!student) return;
+  const reportText = buildFullStudentExplanationReport(student);
+  try {
+    await navigator.clipboard.writeText(reportText);
+    showToast('📋 คัดลอกใบชี้แจงคะแนนและคอมเมนต์แล้ว นำไปวางส่งให้นักเรียนได้ทันที', 'success');
+  } catch (e) {
+    showToast('ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาคัดลอกจากช่องข้อความ', 'warning');
+  }
+}
+
+function openClassScoreSummaryModal() {
+  if (!elements.classScoreSummaryModal || !elements.classSummaryModalBody) return;
+  const course = getActiveCourse();
+  if (elements.classSummaryCourseLabel && course) {
+    elements.classSummaryCourseLabel.textContent = `${course.subject} · ${course.assignment || ''}`;
+  }
+
+  const students = state.students || [];
+  if (students.length === 0) {
+    elements.classSummaryModalBody.innerHTML = `<div style="padding:24px; text-align:center; color:#94a3b8;">ยังไม่มีรายชื่อนักเรียนในวิชานี้</div>`;
+  } else {
+    const rowsHtml = students.map((s, idx) => {
+      const ev = s.assignment_evaluation;
+      const setCode = (ev && ev.exam_set) || s.confirmed_exam_set || '-';
+      const scoreText = ev ? `${ev.score} / ${ev.max_score || 20}` : (s.note || 'ยังไม่ตรวจ');
+      const levelText = ev ? String(ev.quality_level || ev.status_label || '').replace(/\s*\(\d+\/\d+\)/g, '') : '-';
+      const commentText = s.teacher_comment || (ev ? buildAutoExplanationFromEvaluation(s) : (s.note || '-'));
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td><strong>${escapeHtml(s.student_name || s.repo)}</strong><br><small style="color:#94a3b8;">${escapeHtml((s.raw_input || '').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, ''))}</small></td>
+          <td>${setCode !== '-' ? `<span class="rubric-score-badge lvl-good">ชุด ${escapeHtml(setCode)}</span>` : '-'}</td>
+          <td><strong style="color:#fff;">${escapeHtml(scoreText)}</strong>${levelText !== '-' ? `<br><small style="color:#93c5fd;">${escapeHtml(levelText)}</small>` : ''}</td>
+          <td style="white-space:pre-wrap; font-size:0.76rem; color:#cbd5e1; max-width:440px;">${escapeHtml(commentText)}</td>
+          <td>
+            <button type="button" class="btn btn-secondary btn-xs btn-copy-row-explain" data-stu-idx="${idx}">📋 คัดลอกคำชี้แจง</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    elements.classSummaryModalBody.innerHTML = `
+      <table class="score-summary-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>ชื่อ / รหัสนักเรียน</th>
+            <th>ชุดข้อสอบ</th>
+            <th>คะแนนรวม</th>
+            <th>คอมเมนต์ / รายละเอียดชี้แจงคะแนนรายข้อ</th>
+            <th>ส่งให้นักเรียน</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `;
+
+    elements.classSummaryModalBody.querySelectorAll('.btn-copy-row-explain').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.stuIdx, 10);
+        if (students[idx]) copyStudentScoreExplanationReport(students[idx]);
+      });
+    });
+  }
+
+  elements.classScoreSummaryModal.style.display = 'flex';
+}
+
+function closeClassScoreSummaryModal() {
+  if (elements.classScoreSummaryModal) {
+    elements.classScoreSummaryModal.style.display = 'none';
+  }
+}
+
+function applyEvaluationNote(student, customCommentText = undefined) {
   if (!student || !student.assignment_evaluation) return;
   const ev = student.assignment_evaluation;
-  const note = ev.suggested_teacher_note || `คะแนน ${ev.score}/${ev.max_score} (${ev.status_label})`;
+  if (customCommentText !== undefined) {
+    student.teacher_comment = String(customCommentText).trim();
+  } else if (!student.teacher_comment) {
+    student.teacher_comment = buildAutoExplanationFromEvaluation(student);
+  }
+  const baseNote = ev.suggested_teacher_note || `คะแนน ${ev.score}/${ev.max_score} (${ev.status_label})`;
+  const note = baseNote;
 
   if (elements.studentNoteInput) {
     elements.studentNoteInput.value = note;
@@ -2730,14 +2882,18 @@ function applyEvaluationNote(student) {
   }
   student.viewed = true;
   student.note = note;
+  student.saved_score_at = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
   persistLocalStudentReview(student);
   syncActiveCourseState();
   renderCourseSelect();
   updateStudentItemCard(student);
   updateViewedStats();
-  saveStudentReview(student.owner, student.repo, true, note);
-  showToast('✓ นำข้อสรุปคะแนนลงบันทึกและติ๊กตรวจแล้วเรียบร้อย!', 'success');
+  saveStudentReview(student.owner, student.repo, true, note, student.teacher_comment, student.assignment_evaluation);
+  if (state.activeTab === 'inspect') {
+    renderInspectTab(student);
+  }
+  showToast('💾 บันทึกคะแนนและคอมเมนต์ชี้แจงของนักเรียนคนนี้เก็บไว้เรียบร้อย!', 'success');
 }
 
 
@@ -2787,6 +2943,11 @@ function setupKeyboardShortcuts() {
       e.preventDefault();
       toggleZenMode();
     } else if (e.key === 'Escape') {
+      if (elements.classScoreSummaryModal && elements.classScoreSummaryModal.style.display !== 'none') {
+        e.preventDefault();
+        closeClassScoreSummaryModal();
+        return;
+      }
       if (elements.examSetConfirmModal && elements.examSetConfirmModal.style.display !== 'none') {
         e.preventDefault();
         closeExamSetConfirmModal();
@@ -2828,33 +2989,38 @@ function exportResultsToCsv() {
   const activeCourse = getActiveCourse();
   const courseTitle = activeCourse ? `${activeCourse.subject} - ${activeCourse.assignment}` : 'ทั่วไป';
 
-  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / Repository', 'ลิงก์ GitHub', 'ประเภทโปรเจกต์', 'โอกาสใช้ AI (%)', 'ผลประเมิน AI', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'Commit ล่าสุด'];
+  const headers = ['ลำดับ', 'รายวิชา/งาน', 'ชื่อนักเรียน', 'แหล่งที่มา / ไฟล์', 'ชุดข้อสอบ', 'คะแนนที่ได้', 'คะแนนเต็ม', 'ระดับคุณภาพ', 'คะแนนรายข้อ (Rubric)', 'คอมเมนต์ / คำชี้แจงคะแนนสำหรับนักเรียน', 'สถานะการตรวจ', 'ข้อความบันทึกของครู', 'โอกาสใช้ AI (%)'];
   const rows = state.students.map((s, index) => {
-    let projTypeText = '-';
-    if (s.meta?.has_web || s.has_web) projTypeText = 'เว็บสถิต (HTML)';
-    else if (s.meta?.has_python || s.has_python) projTypeText = 'Python / OOP';
-    else if (s.status === 'ready') projTypeText = 'โค้ดทั่วไป';
-
     const aiInfo = s.ai_analysis || (s.local_bundle && s.local_bundle.inspect && s.local_bundle.inspect.ai_analysis);
     const aiScoreText = aiInfo && typeof aiInfo.ai_score === 'number' ? `${aiInfo.ai_score}%` : '-';
-    const aiLabelText = aiInfo && aiInfo.risk_label ? aiInfo.risk_label : '-';
+
+    const ev = s.assignment_evaluation;
+    const setCode = (ev && ev.exam_set) ? `ชุด ${ev.exam_set}` : (s.confirmed_exam_set ? `ชุด ${s.confirmed_exam_set}` : '-');
+    const scoreVal = ev && typeof ev.score === 'number' ? String(ev.score) : '-';
+    const maxVal = ev && typeof ev.max_score === 'number' ? String(ev.max_score) : '-';
+    const qualityVal = ev ? String(ev.quality_level || ev.status_label || '-').replace(/\s*\(\d+\/\d+\)/g, '') : '-';
+    const breakdownVal = (ev && Array.isArray(ev.rubric_scores))
+      ? ev.rubric_scores.map(r => `ข้อ${r.id}:${r.score}/${r.max_score}`).join(' | ')
+      : '-';
+    const commentVal = (s.teacher_comment || (ev ? buildAutoExplanationFromEvaluation(s) : '')).replace(/\r?\n/g, ' ; ');
 
     const viewedText = s.viewed ? 'ตรวจแล้ว' : 'ยังไม่ได้ตรวจ';
-    const commitSha = s.meta?.commit_hash ? s.meta.commit_hash.substring(0, 7) : (s.meta?.commit_sha ? s.meta.commit_sha.substring(0, 7) : '-');
     const noteText = s.note || '';
 
     return [
       index + 1,
       `"${courseTitle.replace(/"/g, '""')}"`,
       `"${(s.student_name || '').replace(/"/g, '""')}"`,
-      `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : s.raw_input).replace(/"/g, '""')}"`,
-      `"${(s.canonical_url || '').replace(/"/g, '""')}"`,
-      `"${projTypeText}"`,
-      `"${aiScoreText}"`,
-      `"${aiLabelText.replace(/"/g, '""')}"`,
+      `"${(s.owner && s.repo ? `${s.owner}/${s.repo}` : (s.raw_input || '')).replace(/"/g, '""')}"`,
+      `"${setCode.replace(/"/g, '""')}"`,
+      `"${scoreVal}"`,
+      `"${maxVal}"`,
+      `"${qualityVal.replace(/"/g, '""')}"`,
+      `"${breakdownVal.replace(/"/g, '""')}"`,
+      `"${commentVal.replace(/"/g, '""')}"`,
       `"${viewedText}"`,
       `"${noteText.replace(/"/g, '""')}"`,
-      `"${commitSha}"`,
+      `"${aiScoreText}"`,
     ].join(',');
   });
 
@@ -3883,6 +4049,22 @@ function findStudentCardElement(studentKey) {
   return null;
 }
 
+function buildStudentItemScoreRowHtml(student) {
+  if (!student) return '';
+  const ev = student.assignment_evaluation;
+  if (!ev && !student.teacher_comment) return '';
+  let pillHtml = '';
+  if (ev && typeof ev.score === 'number') {
+    const statusCls = ev.status === 'passed' ? 'passed' : (ev.status === 'partial' ? 'partial' : 'failed');
+    const setPrefix = ev.exam_set ? `ชุด ${escapeHtml(ev.exam_set)} · ` : '';
+    pillHtml = `<span class="student-item-score-pill ${statusCls}">${setPrefix}${ev.score}/${ev.max_score || 20}</span>`;
+  }
+  const commentHtml = student.teacher_comment
+    ? `<span class="student-item-comment-tag" title="${escapeHtml(student.teacher_comment)}">💬 มีคำชี้แจง</span>`
+    : '';
+  return `<div class="student-item-score-row">${pillHtml}${commentHtml}</div>`;
+}
+
 function renderStudentsList() {
   const list = elements.studentsList;
   list.innerHTML = '';
@@ -3944,6 +4126,7 @@ function renderStudentsList() {
         <div class="student-item-details">
           <span class="student-item-name" title="${escapeHtml(student.student_name)}">${escapeHtml(student.student_name)}</span>
           ${showSubLine ? `<span class="student-item-sub" title="${escapeHtml(subLabel)}">${escapeHtml(subLabel)}</span>` : ''}
+          ${buildStudentItemScoreRowHtml(student)}
         </div>
       </div>
       <div class="student-item-right">
@@ -3993,6 +4176,16 @@ function updateStudentItemCard(student) {
   const chk = el.querySelector('.student-item-checkbox');
   if (chk) {
     chk.classList.toggle('checked', !!student.viewed);
+  }
+
+  const detailsEl = el.querySelector('.student-item-details');
+  if (detailsEl) {
+    const oldRow = detailsEl.querySelector('.student-item-score-row');
+    if (oldRow) oldRow.remove();
+    const scoreRowHtml = buildStudentItemScoreRowHtml(student);
+    if (scoreRowHtml) {
+      detailsEl.insertAdjacentHTML('beforeend', scoreRowHtml);
+    }
   }
 }
 
@@ -5010,7 +5203,10 @@ function persistLocalStudentReview(student, courseId = '') {
     const entry = {
       viewed: !!student.viewed,
       note: student.note || '',
+      teacher_comment: student.teacher_comment || '',
+      saved_score_at: student.saved_score_at || null,
       confirmed_exam_set: student.confirmed_exam_set || null,
+      assignment_evaluation: student.assignment_evaluation || null,
       updated_at: Date.now(),
     };
     getStudentReviewStorageKeys(student, courseId).forEach(k => {
@@ -5029,9 +5225,18 @@ function hydrateStudentReviewState(student, courseId = '') {
     if (saved && typeof saved === 'object') {
       if (saved.viewed) student.viewed = true;
       if (!student.note && saved.note) student.note = saved.note;
+      if (saved.teacher_comment && !student.teacher_comment) {
+        student.teacher_comment = saved.teacher_comment;
+      }
+      if (saved.saved_score_at && !student.saved_score_at) {
+        student.saved_score_at = saved.saved_score_at;
+      }
       if (saved.confirmed_exam_set && !student.confirmed_exam_set) {
         student.confirmed_exam_set = saved.confirmed_exam_set;
         student.preferred_exam_set = saved.confirmed_exam_set;
+      }
+      if (saved.assignment_evaluation && !student.assignment_evaluation) {
+        student.assignment_evaluation = saved.assignment_evaluation;
       }
       break;
     }
@@ -5055,13 +5260,15 @@ async function handleViewedToggle(index, viewed) {
   await saveStudentReview(student.owner, student.repo, !!viewed, null);
 }
 
-async function saveStudentReview(owner, repo, viewed, note) {
+async function saveStudentReview(owner, repo, viewed, note, teacherComment = undefined, evaluation = undefined) {
   syncActiveCourseState();
   if (!owner || !repo) return;
   try {
     const payload = {};
     if (viewed !== null && viewed !== undefined) payload.viewed = viewed;
     if (note !== null && note !== undefined) payload.note = note;
+    if (teacherComment !== undefined) payload.teacher_comment = teacherComment;
+    if (evaluation !== undefined) payload.evaluation = evaluation;
 
     await fetch(`/api/reviews/${owner}/${repo}`, {
       method: 'POST',
@@ -5702,6 +5909,37 @@ function renderInspectTab(student) {
 
             ${buildInlineCodePreviewHtml(student)}
           </div>
+
+          <!-- กล่องบันทึกคะแนนและคอมเมนต์ชี้แจงสำหรับนักเรียน (เก็บไว้ดูย้อนหลังและคัดลอกส่งให้นักเรียนได้ทันที) -->
+          <div class="eval-comment-explain-box">
+            <div class="eval-comment-header">
+              <div class="eval-comment-title">
+                <span>💬</span>
+                <span>คอมเมนต์ & คำชี้แจงคะแนนสำหรับนักเรียน (บันทึกเก็บไว้ชี้แจงรายข้อ)</span>
+                ${student.saved_score_at ? `<span class="eval-comment-saved-pill">✓ บันทึกไว้แล้ว (${escapeHtml(student.saved_score_at)})</span>` : ''}
+              </div>
+              <div class="eval-comment-btn-group">
+                <button type="button" class="btn btn-secondary btn-xs btn-autofill-explain" title="ดึงรายละเอียดคะแนนทั้ง 6 ข้อมาสร้างเป็นคำชี้แจงอัตโนมัติ">
+                  ✨ สร้างคำชี้แจงรายข้ออัตโนมัติ
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs btn-open-class-summary" title="ดูตารางคะแนนและคอมเมนต์ของนักเรียนทั้งหมดในห้อง">
+                  📊 ดูตารางสรุปคะแนนทั้งห้อง
+                </button>
+              </div>
+            </div>
+            <textarea class="eval-comment-textarea" placeholder="พิมพ์คอมเมนต์หรือเหตุผลชี้แจงการให้คะแนนของนักเรียนคนนี้...">${escapeHtml(student.teacher_comment || buildAutoExplanationFromEvaluation(student))}</textarea>
+            <div class="eval-comment-actions-row">
+              <span style="font-size:0.75rem; color:#94a3b8;">💡 ระบบจะบันทึกทั้งคะแนนรายข้อและข้อความชี้แจงนี้เก็บไว้ในเครื่องอัตโนมัติ แม้เปลี่ยนไปตรวจคนอื่นหรือรีเฟรชหน้าเว็บ</span>
+              <div class="eval-comment-btn-group">
+                <button type="button" class="btn btn-secondary btn-sm btn-copy-explain-report">
+                  📋 คัดลอกใบชี้แจงคะแนน (ส่งให้นักเรียน)
+                </button>
+                <button type="button" class="btn btn-primary btn-sm btn-save-score-and-comment">
+                  💾 บันทึกคะแนน & คอมเมนต์เก็บไว้ (${evalInfo.score}/${evalInfo.max_score || 20})
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       `;
     } else {
@@ -5788,6 +6026,44 @@ function renderInspectTab(student) {
         student.inspect_selected_file = e.target.value;
         renderInspectTab(student);
       });
+    }
+    const commentTextarea = evalCard.querySelector('.eval-comment-textarea');
+    if (commentTextarea) {
+      commentTextarea.addEventListener('input', (e) => {
+        student.teacher_comment = e.target.value;
+        persistLocalStudentReview(student);
+      });
+    }
+    const btnAutoExplain = evalCard.querySelector('.btn-autofill-explain');
+    if (btnAutoExplain && commentTextarea) {
+      btnAutoExplain.addEventListener('click', () => {
+        const generated = buildAutoExplanationFromEvaluation(student);
+        commentTextarea.value = generated;
+        student.teacher_comment = generated;
+        persistLocalStudentReview(student);
+        showToast('✨ สร้างคำชี้แจงคะแนนรายข้อจากตาราง Rubric แล้ว', 'info');
+      });
+    }
+    const btnSaveComment = evalCard.querySelector('.btn-save-score-and-comment');
+    if (btnSaveComment) {
+      btnSaveComment.addEventListener('click', () => {
+        const textVal = commentTextarea ? commentTextarea.value : student.teacher_comment;
+        applyEvaluationNote(student, textVal);
+      });
+    }
+    const btnCopyExplain = evalCard.querySelector('.btn-copy-explain-report');
+    if (btnCopyExplain) {
+      btnCopyExplain.addEventListener('click', () => {
+        if (commentTextarea) {
+          student.teacher_comment = commentTextarea.value;
+          persistLocalStudentReview(student);
+        }
+        copyStudentScoreExplanationReport(student);
+      });
+    }
+    const btnOpenSummary = evalCard.querySelector('.btn-open-class-summary');
+    if (btnOpenSummary) {
+      btnOpenSummary.addEventListener('click', openClassScoreSummaryModal);
     }
 
     container.appendChild(evalCard);

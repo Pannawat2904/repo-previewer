@@ -165,6 +165,8 @@ class FetchSingleRequest(BaseModel):
 class ReviewUpdateRequest(BaseModel):
     viewed: Optional[bool] = None
     note: Optional[str] = None
+    teacher_comment: Optional[str] = None
+    evaluation: Optional[dict] = None
 
 
 class DeleteSingleCacheRequest(BaseModel):
@@ -712,9 +714,15 @@ async def api_get_reviews():
 
 @app.post("/api/reviews/{owner}/{repo}")
 async def api_save_review(owner: str, repo: str, req: ReviewUpdateRequest):
-    """บันทึกสถานะตรวจแล้วและข้อความโน้ตย่อ"""
+    """บันทึกสถานะตรวจแล้ว คะแนน และคอมเมนต์ชี้แจงสำหรับนักเรียน"""
     key = f"{owner.lower()}/{repo.lower()}"
-    res = save_review(key, viewed=req.viewed, note=req.note)
+    res = save_review(
+        key,
+        viewed=req.viewed,
+        note=req.note,
+        teacher_comment=req.teacher_comment,
+        evaluation=req.evaluation,
+    )
     return {"success": True, "data": res}
 
 
