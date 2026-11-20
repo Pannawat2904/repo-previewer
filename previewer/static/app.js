@@ -1853,37 +1853,86 @@ function loadExampleProductPrompt() {
 }
 
 const GLOBAL_GEMINI_KEY_STORAGE = 'repo_previewer_gemini_api_key';
-const DEFAULT_BUILTIN_GEMINI_KEY_B64 = 'QVEuQWI4Uk42S0lkX3d2ZnQxT001aEJ6VF9lZXJ5dFlwc243TVJyVnhJRVB3UlZtSFNvX2c=';
+const DEFAULT_BUILTIN_GEMINI_KEYS_B64 = [
+  'QVEuQWI4Uk42S0lkX3d2ZnQxT001aEJ6VF9lZXJ5dFlwc243TVJyVnhJRVB3UlZtSFNvX2c=',
+  'QVEuQWI4Uk42STBuYUtCMmNMNl96WGlJY1BNXzBtZDM0MGJwQUUzTUhGOTNSMkZzUGI4NFE=',
+];
+const DEFAULT_BUILTIN_GEMINI_KEY_B64 = DEFAULT_BUILTIN_GEMINI_KEYS_B64[0];
+
+function parseGeminiApiKeysList(raw) {
+  if (!raw || !String(raw).trim()) return [];
+  const tokens = String(raw).trim().split(/[,;\s]+/);
+  const result = [];
+  tokens.forEach(tok => {
+    const clean = tok.trim();
+    if (clean && !result.includes(clean)) {
+      result.push(clean);
+    }
+  });
+  return result;
+}
+
+function getBuiltinGeminiKeys() {
+  const keys = [];
+  DEFAULT_BUILTIN_GEMINI_KEYS_B64.forEach(b64 => {
+    try {
+      const decoded = atob(b64).trim();
+      if (decoded && !keys.includes(decoded)) {
+        keys.push(decoded);
+      }
+    } catch (e) {}
+  });
+  return keys;
+}
 
 function getBuiltinGeminiKey() {
-  try {
-    return atob(DEFAULT_BUILTIN_GEMINI_KEY_B64).trim();
-  } catch (e) {
-    return '';
-  }
+  return getBuiltinGeminiKeys().join(',');
 }
 
 function getSavedGlobalGeminiKey() {
+  const builtinKeys = getBuiltinGeminiKeys();
   try {
     const raw = localStorage.getItem(GLOBAL_GEMINI_KEY_STORAGE);
     if (raw !== null) {
-      return raw.trim();
+      const savedList = parseGeminiApiKeysList(raw);
+      if (savedList.length === 0) {
+        return '';
+      }
+      // อัปเกรดอัตโนมัติให้รวมคีย์สำรองของระบบทั้งหมดเข้าใน Pool เสมอ
+      let changed = false;
+      builtinKeys.forEach(bk => {
+        if (!savedList.includes(bk)) {
+          savedList.push(bk);
+          changed = true;
+        }
+      });
+      const joined = savedList.join(',');
+      if (changed) {
+        localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, joined);
+      }
+      return joined;
     }
-    const builtin = getBuiltinGeminiKey();
-    if (builtin) {
-      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, builtin);
+    const builtinJoined = builtinKeys.join(',');
+    if (builtinJoined) {
+      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, builtinJoined);
     }
-    return builtin;
+    return builtinJoined;
   } catch (e) {
-    return getBuiltinGeminiKey();
+    return builtinKeys.join(',');
   }
 }
 
 function saveGlobalGeminiKeyLocal(apiKey) {
   try {
-    const clean = String(apiKey || '').trim();
-    if (clean) {
-      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, clean);
+    const parsed = parseGeminiApiKeysList(apiKey);
+    if (parsed.length > 0) {
+      // รวมคีย์ที่ผู้ใช้กรอกไว้หน้าสุด ตามด้วยคีย์สำรองในระบบเพื่อใช้สลับเมื่อเต็ม
+      getBuiltinGeminiKeys().forEach(bk => {
+        if (!parsed.includes(bk)) {
+          parsed.push(bk);
+        }
+      });
+      localStorage.setItem(GLOBAL_GEMINI_KEY_STORAGE, parsed.join(','));
     } else {
       localStorage.removeItem(GLOBAL_GEMINI_KEY_STORAGE);
     }
@@ -1891,22 +1940,68 @@ function saveGlobalGeminiKeyLocal(apiKey) {
 }
 
 function maskGeminiApiKey(key) {
+  const keys = parseGeminiApiKeysList(key);
+  if (keys.length === 0) return '';
+  const first = keys[0];
+  const firstMasked = first.length >= 12 ? `${first.slice(0, 6)}...${first.slice(-4)}` : 'AIza...****';
+  return keys.length > 1 ? `${firstMasked} (+สำรองอีก ${keys.length - 1} คีย์)` : firstMasked;
+}
+
+function maskSingleGeminiKey(key) {
   const clean = String(key || '').trim();
   if (!clean) return '';
   return clean.length >= 12 ? `${clean.slice(0, 6)}...${clean.slice(-4)}` : 'AIza...****';
 }
 
-function applyGeminiKeyStatusUI({ configured, masked, source }) {
+function renderGeminiKeyPoolUI(maskedKeysList = []) {
+  const poolEl = document.getElementById('geminiKeyPoolList');
+  if (!poolEl) return;
+  let keysToShow = Array.isArray(maskedKeysList) && maskedKeysList.length > 0
+    ? maskedKeysList
+    : parseGeminiApiKeysList(getSavedGlobalGeminiKey()).map(maskSingleGeminiKey);
+
+  if (keysToShow.length === 0) {
+    poolEl.innerHTML = `<div style="font-size: 0.8rem; color: var(--text-secondary);">ยังไม่มี API Key ที่เปิดใช้งาน (ระบบจะใช้ AST ตรวจโครงสร้างแทน)</div>`;
+    return;
+  }
+
+  poolEl.innerHTML = `
+    <div style="font-size: 0.78rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between;">
+      <span>🔄 รายการ API Key ในระบบสลับอัตโนมัติ (${keysToShow.length} คีย์)</span>
+      <span style="font-weight: 500; color: #94a3b8;">สลับคีย์สำรองทันทีเมื่อคีย์หลักเต็ม</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px;">
+      ${keysToShow.map((mk, idx) => `
+        <div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: ${idx === 0 ? 'rgba(16, 185, 129, 0.14)' : 'rgba(59, 130, 246, 0.14)'}; border: 1px solid ${idx === 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(59, 130, 246, 0.35)'}; font-size: 0.78rem; color: #e2e8f0;">
+          <span style="font-weight: 700; color: ${idx === 0 ? '#34d399' : '#60a5fa'};">${idx === 0 ? 'คีย์หลัก #1' : `คีย์สำรอง #${idx + 1}`}</span>
+          <code style="font-family: var(--font-mono); font-size: 0.76rem; color: #f8fafc;">${escapeHtml(mk)}</code>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function applyGeminiKeyStatusUI({ configured, masked, source, keys_count, masked_keys }) {
   const badges = [
     elements.geminiKeyStatusBadge,
     elements.hubGeminiKeyStatusBadge,
     elements.aiModalKeyStatusBadge,
   ];
+  const localKeys = parseGeminiApiKeysList(getSavedGlobalGeminiKey());
+  const effectiveMaskedKeys = (Array.isArray(masked_keys) && masked_keys.length > 0)
+    ? masked_keys
+    : localKeys.map(maskSingleGeminiKey);
+  const count = keys_count || effectiveMaskedKeys.length || (configured ? 1 : 0);
+
   const label = configured
-    ? (source === 'env'
-      ? `✓ เชื่อมต่อแล้ว (${masked} · คีย์หลักระบบ)`
-      : `✓ เชื่อมต่อแล้ว (${masked} · ใช้ร่วมกันทั้งระบบ)`)
+    ? (count > 1
+      ? `✓ เชื่อมต่อแล้ว (${count} คีย์สลับอัตโนมัติ · ${effectiveMaskedKeys.join(', ')})`
+      : (source === 'env'
+        ? `✓ เชื่อมต่อแล้ว (${masked} · คีย์หลักระบบ)`
+        : `✓ เชื่อมต่อแล้ว (${masked} · ใช้ร่วมกันทั้งระบบ)`))
     : 'ยังไม่ได้ตั้งค่า (ใช้ AST ตรวจโครงสร้างแทน)';
+
+  renderGeminiKeyPoolUI(configured ? effectiveMaskedKeys : []);
 
   badges.forEach(badge => {
     if (!badge) return;

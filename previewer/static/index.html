@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261120-cachefix14">
+  <link rel="stylesheet" href="/static/app.css?v=20261120-multikey15">
 </head>
 
 <body>
@@ -807,12 +807,15 @@ https://github.com/patvikan24-oss/my-profil-013
             <span id="aiModalKeyStatusBadge" class="badge badge-subtle">กำลังตรวจสอบ...</span>
           </div>
           <p class="ai-key-desc">
-            เชื่อมต่อ Gemini Flash ฟรีครั้งเดียว ระบบจะจำและใช้คีย์นี้ตรวจโค้ดร่วมกันทุกวิชาและทุกงานโดยไม่ต้องใส่ซ้ำ
-            (หากไม่ตั้งค่า ระบบจะตรวจโครงสร้าง OOP ผ่าน AST แทน)
+            รองรับระบบสลับคีย์อัตโนมัติ (Multi-Key Failover) เมื่อคีย์ใดคีย์หนึ่งโควตาเต็ม ระบบจะสลับไปใช้คีย์สำรองถัดไปทันทีโดยไม่สะดุด
+            (สามารถใส่เพิ่มหลายคีย์โดยคั่นด้วยเครื่องหมายลูกน้ำ <code>,</code>)
           </p>
+          <div id="geminiKeyPoolList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(56, 189, 248, 0.2);">
+            <!-- Populated dynamically with active API keys in rotation pool -->
+          </div>
           <div class="ai-key-input-row">
             <input type="password" id="geminiApiKeyInput" class="form-input ai-key-input"
-              placeholder="วาง Gemini API Key ที่นี่ (AIzaSy...)">
+              placeholder="วาง Gemini API Key เพิ่มเติม (คั่นด้วย , หากใส่หลายคีย์)">
             <button type="button" id="btnSaveGeminiKey" class="btn btn-primary btn-sm">
               <span>บันทึก & ทดสอบ</span>
             </button>
@@ -918,7 +921,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261120-cachefix14"></script>
+  <script src="/static/app.js?v=20261120-multikey15"></script>
 </body>
 
 </html>

@@ -51,7 +51,13 @@ from previewer.storage import (
     save_config,
     save_review,
 )
-from previewer.ai_grader import grade_student_code, resolve_gemini_api_key
+from previewer.ai_grader import (
+    grade_student_code,
+    mask_gemini_key,
+    parse_gemini_api_keys,
+    resolve_gemini_api_key,
+    resolve_gemini_api_keys,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -475,36 +481,59 @@ async def api_delete_assignment(course_id: str, assignment_id: str):
 
 @app.get("/api/settings/gemini-key")
 async def api_get_gemini_key_status():
-    """ตรวจสอบสถานะ Gemini API Key กลางของระบบ"""
-    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    key = resolve_gemini_api_key()
-    if not key:
-        return {"configured": False, "masked": "", "source": ""}
-    masked = key[:6] + "..." + key[-4:] if len(key) >= 12 else "AIza...****"
-    source = "env" if (env_key and key == env_key) else "config"
-    return {"configured": True, "masked": masked, "source": source}
+    """ตรวจสอบสถานะ Gemini API Key กลางของระบบ (รองรับหลายคีย์สลับอัตโนมัติ)"""
+    env_keys = parse_gemini_api_keys(os.environ.get("GEMINI_API_KEY", ""))
+    keys = resolve_gemini_api_keys()
+    if not keys:
+        return {"configured": False, "masked": "", "source": "", "keys_count": 0, "masked_keys": []}
+    primary_key = keys[0]
+    masked = mask_gemini_key(primary_key)
+    masked_keys = [mask_gemini_key(k) for k in keys]
+    source = "env" if (env_keys and primary_key in env_keys) else "config"
+    return {
+        "configured": True,
+        "masked": masked,
+        "source": source,
+        "keys_count": len(keys),
+        "masked_keys": masked_keys,
+    }
 
 
 @app.post("/api/settings/gemini-key")
 async def api_save_gemini_key(req: GeminiKeyRequest):
-    """บันทึกและตรวจสอบ Gemini API Key กลางของทั้งระบบ"""
-    clean_key = req.api_key.strip()
-    if not clean_key:
+    """บันทึกและตรวจสอบ Gemini API Key กลางของทั้งระบบ (รองรับหลายคีย์คั่นด้วยลูกน้ำหรือขึ้นบรรทัดใหม่)"""
+    parsed_keys = parse_gemini_api_keys(req.api_key)
+    if not parsed_keys:
         save_config({"gemini_api_key": ""})
-        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if env_key:
-            masked_env = env_key[:6] + "..." + env_key[-4:] if len(env_key) >= 12 else "AIza...****"
-            return {"status": "cleared", "message": "ล้างคีย์ที่กรอกไว้แล้ว (ใช้คีย์หลักจากเซิร์ฟเวอร์แทน)", "masked": masked_env}
-        return {"status": "cleared", "message": "ลบ API Key เรียบร้อยแล้ว", "masked": ""}
+        env_keys = parse_gemini_api_keys(os.environ.get("GEMINI_API_KEY", ""))
+        if env_keys:
+            masked_env = mask_gemini_key(env_keys[0])
+            return {
+                "status": "cleared",
+                "message": "ล้างคีย์ที่กรอกไว้แล้ว (ใช้คีย์หลักจากเซิร์ฟเวอร์แทน)",
+                "masked": masked_env,
+                "keys_count": len(env_keys),
+                "masked_keys": [mask_gemini_key(k) for k in env_keys],
+            }
+        return {"status": "cleared", "message": "ลบ API Key เรียบร้อยแล้ว", "masked": "", "keys_count": 0, "masked_keys": []}
 
-    # บันทึกคีย์กลางไว้เสมอ
-    save_config({"gemini_api_key": clean_key})
-    masked = clean_key[:6] + "..." + clean_key[-4:] if len(clean_key) >= 12 else "AIza...****"
+    joined_keys = ",".join(parsed_keys)
+    save_config({"gemini_api_key": joined_keys})
+    primary_key = parsed_keys[0]
+    masked = mask_gemini_key(primary_key)
+    all_active_keys = resolve_gemini_api_keys(joined_keys)
+    masked_keys = [mask_gemini_key(k) for k in all_active_keys]
 
-    if req.skip_test or clean_key.startswith("AQ."):
-        return {"status": "ok", "message": "บันทึกและเปิดใช้งาน API Key กลางทั้งระบบสำเร็จ!", "masked": masked}
+    if req.skip_test or any(k.startswith("AQ.") for k in parsed_keys):
+        return {
+            "status": "ok",
+            "message": f"บันทึกและเปิดใช้งาน API Key กลางสำเร็จ ({len(all_active_keys)} คีย์สลับอัตโนมัติ)!",
+            "masked": masked,
+            "keys_count": len(all_active_keys),
+            "masked_keys": masked_keys,
+        }
 
-    test_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
+    test_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={primary_key}"
     payload = {
         "contents": [{"parts": [{"text": "Ping"}]}],
         "generationConfig": {"maxOutputTokens": 5},
@@ -513,18 +542,20 @@ async def api_save_gemini_key(req: GeminiKeyRequest):
         try:
             resp = await client.post(test_url, json=payload)
             if resp.status_code == 200:
-                return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ!", "masked": masked}
+                return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ!", "masked": masked, "keys_count": len(all_active_keys), "masked_keys": masked_keys}
             elif resp.status_code in (400, 403):
-                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={primary_key}"
                 resp2 = await client.post(fallback_url, json=payload)
                 if resp2.status_code == 200:
-                    return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ (ผ่าน Gemini 1.5 Flash)!", "masked": masked}
+                    return {"status": "ok", "message": "เชื่อมต่อ Gemini API สำเร็จ (ผ่าน Gemini 1.5 Flash)!", "masked": masked, "keys_count": len(all_active_keys), "masked_keys": masked_keys}
                 
                 # หากติด policy หรือ error ให้บันทึกไว้และแจ้งเตือนอย่างชัดเจน ไม่โยน 400
                 return {
                     "status": "saved_with_warning",
                     "message": f"บันทึก API Key แล้ว ({resp.text.strip()[:120]})",
                     "masked": masked,
+                    "keys_count": len(all_active_keys),
+                    "masked_keys": masked_keys,
                 }
             else:
                 return {

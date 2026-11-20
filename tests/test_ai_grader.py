@@ -9,8 +9,11 @@ from previewer.ai_grader import (
     detect_practical_exam_set,
     evaluate_practical_exam_ast,
     evaluate_with_ast_fallback,
+    evaluate_with_gemini,
+    get_builtin_gemini_api_keys,
     parse_prompt_specs,
     resolve_gemini_api_key,
+    resolve_gemini_api_keys,
 )
 import previewer.storage as storage
 from previewer.storage import (
@@ -436,6 +439,78 @@ print("รวมหน่วยไฟฟ้าทั้ง 3 หลัง:", tot
             )
             self.assertEqual(resp_expired_cache.status_code, 200)
             self.assertEqual(resp_expired_cache.json()["exam_set"], "B")
+
+    def test_multi_key_pool_and_automatic_quota_failover(self):
+        import asyncio
+        import previewer.ai_grader as ag
+
+        builtin_keys = get_builtin_gemini_api_keys()
+        self.assertEqual(len(builtin_keys), 2)
+        self.assertTrue(builtin_keys[0].startswith("AQ.Ab8") and builtin_keys[0].endswith("So_g"))
+        self.assertTrue(builtin_keys[1].startswith("AQ.Ab8") and builtin_keys[1].endswith("b84Q"))
+
+        # ทดสอบว่าแม้ส่งมาแค่คีย์ที่ 1 ระบบจะพ่วงคีย์ที่ 2 เข้า Pool สำรองให้อัตโนมัติ
+        ag._QUOTA_EXHAUSTED_KEYS.clear()
+        ag._LAST_WORKING_KEY = None
+        pool = resolve_gemini_api_keys(builtin_keys[0])
+        self.assertEqual(pool[:2], builtin_keys)
+
+        # จำลองคีย์ที่ 1 โควตาเต็ม (HTTP 429) และคีย์ที่ 2 ใช้งานได้สำเร็จ (HTTP 200)
+        called_urls = []
+
+        class FakeResp:
+            def __init__(self, status_code, json_data=None, text=""):
+                self.status_code = status_code
+                self._json_data = json_data or {}
+                self.text = text
+
+            def json(self):
+                return self._json_data
+
+        async def fake_post(self_client, url, json=None, headers=None):
+            called_urls.append(url)
+            if builtin_keys[0] in url:
+                return FakeResp(429, text="RESOURCE_EXHAUSTED: Quota exceeded")
+            return FakeResp(
+                200,
+                json_data={
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": '{"exam_set": "B", "items": [{"id": 1, "score": 3}, {"id": 2, "score": 3}, {"id": 3, "score": 3}, {"id": 4, "score": 3}, {"id": 5, "score": 4}, {"id": 6, "score": 4}], "summary": "ตรวจผ่านคีย์สำรองสำเร็จ"}'
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+            )
+
+        with patch("httpx.AsyncClient.post", new=fake_post):
+            res = asyncio.run(
+                evaluate_with_gemini(
+                    WORK5_PRACTICAL_EXAM_PROMPT,
+                    "class DailySales:\n    pass\n",
+                    api_key=builtin_keys[0],
+                    student_name="student_01",
+                    filename="sales.py",
+                    exam_set="B",
+                    assignment_id="work-5",
+                )
+            )
+            self.assertEqual(res["mode"], "gemini_ai")
+            self.assertEqual(res["score"], 20)
+            self.assertTrue(res["failover_used"])
+            self.assertEqual(res["api_key_slot"], 2)
+            # ต้องเรียกแค่ 2 ครั้ง (คีย์ 1 ได้ 429 แล้วสลับไปคีย์ 2 ทันทีโดยไม่เสียเวลาลองโมเดลอื่นบนคีย์ 1 ที่เต็มแล้ว)
+            self.assertEqual(len(called_urls), 2)
+            self.assertIn(builtin_keys[0], called_urls[0])
+            self.assertIn(builtin_keys[1], called_urls[1])
+            # และรอบถัดไปต้องจัดลำดับให้คีย์ที่ 2 ที่ใช้งานได้ขึ้นเป็นคีย์หลักอัตโนมัติ
+            next_pool = resolve_gemini_api_keys()
+            self.assertEqual(next_pool[0], builtin_keys[1])
 
 
 if __name__ == "__main__":

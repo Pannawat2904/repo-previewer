@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 import httpx
 
@@ -472,35 +473,115 @@ def _criterion_quality_word(score: int, max_score: int) -> str:
     return {4: "ดีมาก", 3: "ดี", 2: "พอใช้", 1: "ปรับปรุง"}.get(score, "ปรับปรุง")
 
 
-DEFAULT_SYSTEM_GEMINI_KEY_B64 = "QVEuQWI4Uk42S0lkX3d2ZnQxT001aEJ6VF9lZXJ5dFlwc243TVJyVnhJRVB3UlZtSFNvX2c="
+DEFAULT_SYSTEM_GEMINI_KEYS_B64 = [
+    "QVEuQWI4Uk42S0lkX3d2ZnQxT001aEJ6VF9lZXJ5dFlwc243TVJyVnhJRVB3UlZtSFNvX2c=",
+    "QVEuQWI4Uk42STBuYUtCMmNMNl96WGlJY1BNXzBtZDM0MGJwQUUzTUhGOTNSMkZzUGI4NFE=",
+]
+DEFAULT_SYSTEM_GEMINI_KEY_B64 = DEFAULT_SYSTEM_GEMINI_KEYS_B64[0]
+
+# สถานะการสลับคีย์อัตโนมัติ (Key Rotation & Quota Failover State)
+_LAST_WORKING_KEY: Optional[str] = None
+_QUOTA_EXHAUSTED_KEYS: Dict[str, float] = {}
+_QUOTA_COOLDOWN_SECONDS = 90.0
+
+
+def parse_gemini_api_keys(raw: Optional[str]) -> List[str]:
+    """แยกรายการ API Key จากข้อความ (รองรับคั่นด้วยลูกน้ำ, เซมิโคลอน, เว้นวรรค หรือขึ้นบรรทัดใหม่)"""
+    if not raw or not str(raw).strip():
+        return []
+    tokens = re.split(r"[,;\s]+", str(raw).strip())
+    result: List[str] = []
+    for tok in tokens:
+        clean = tok.strip()
+        if clean and clean not in result:
+            result.append(clean)
+    return result
+
+
+def mask_gemini_key(key: str) -> str:
+    clean = (key or "").strip()
+    if not clean:
+        return ""
+    return f"{clean[:6]}...{clean[-4:]}" if len(clean) >= 12 else "AIza...****"
+
+
+def get_builtin_gemini_api_keys() -> List[str]:
+    """ดึงรายการ Gemini API Key เริ่มต้นทั้งหมดของระบบสำหรับสลับใช้งานอัตโนมัติ"""
+    keys: List[str] = []
+    for b64_item in DEFAULT_SYSTEM_GEMINI_KEYS_B64:
+        try:
+            decoded = base64.b64decode(b64_item).decode("utf-8").strip()
+            if decoded and decoded not in keys:
+                keys.append(decoded)
+        except Exception:
+            continue
+    return keys
 
 
 def get_builtin_gemini_api_key() -> str:
-    try:
-        return base64.b64decode(DEFAULT_SYSTEM_GEMINI_KEY_B64).decode("utf-8").strip()
-    except Exception:
-        return ""
+    keys = get_builtin_gemini_api_keys()
+    return keys[0] if keys else ""
+
+
+def resolve_gemini_api_keys(client_key: Optional[str] = None) -> List[str]:
+    """
+    รวบรวมรายการ Gemini API Keys ทั้งหมดที่พร้อมใช้งานตามลำดับความสำคัญ
+    พร้อมจัดลำดับให้คีย์ที่ใช้งานได้ล่าสุดอยู่หน้าสุด และย้ายคีย์ที่เพิ่งเต็มโควตา (429/403) ไปท้ายคิว
+    """
+    candidates: List[str] = []
+
+    def _add_keys(raw_val: Optional[str]) -> None:
+        for k in parse_gemini_api_keys(raw_val):
+            if k not in candidates:
+                candidates.append(k)
+
+    _add_keys(client_key)
+
+    env_explicitly_set = "GEMINI_API_KEY" in os.environ
+    env_val = os.environ.get("GEMINI_API_KEY", "").strip() if env_explicitly_set else ""
+    if env_val:
+        _add_keys(env_val)
+
+    config = load_config()
+    cfg_has_key = "gemini_api_key" in config
+    cfg_val = str(config.get("gemini_api_key") or "").strip() if cfg_has_key else ""
+    if cfg_val:
+        _add_keys(cfg_val)
+
+    # หากอยู่ในโหมดทดสอบที่ตั้ง GEMINI_API_KEY="" และไม่ได้ส่ง client_key หรือ config_key มา ให้คืนลิสต์ว่างตามการทดสอบ
+    if not candidates and (env_explicitly_set or cfg_has_key):
+        return []
+
+    # เพิ่มคีย์สำรองในระบบทั้งหมดเข้าไปใน Pool เสมอ เพื่อให้สลับคีย์อัตโนมัติได้ทันทีเมื่อคีย์หลักเต็ม
+    if not (env_explicitly_set and not env_val and not client_key and not cfg_val):
+        for builtin_k in get_builtin_gemini_api_keys():
+            if builtin_k not in candidates:
+                candidates.append(builtin_k)
+
+    if len(candidates) <= 1:
+        return candidates
+
+    now = time.time()
+    healthy: List[str] = []
+    cooled_down: List[str] = []
+    for k in candidates:
+        exhausted_at = _QUOTA_EXHAUSTED_KEYS.get(k)
+        if exhausted_at and (now - exhausted_at) < _QUOTA_COOLDOWN_SECONDS:
+            cooled_down.append(k)
+        else:
+            healthy.append(k)
+
+    if _LAST_WORKING_KEY and _LAST_WORKING_KEY in healthy:
+        healthy.remove(_LAST_WORKING_KEY)
+        healthy.insert(0, _LAST_WORKING_KEY)
+
+    return healthy + cooled_down
 
 
 def resolve_gemini_api_key(client_key: Optional[str] = None) -> str:
-    """ค้นหา Gemini API Key จากพารามิเตอร์, ตัวแปรแวดล้อม, ไฟล์คอนฟิก หรือคีย์เริ่มต้นของระบบ"""
-    if client_key and client_key.strip():
-        return client_key.strip()
-
-    if "GEMINI_API_KEY" in os.environ:
-        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if env_key:
-            return env_key
-
-    config = load_config()
-    if "gemini_api_key" in config:
-        cfg_key = str(config.get("gemini_api_key") or "").strip()
-        return cfg_key
-
-    if "GEMINI_API_KEY" in os.environ:
-        return ""
-
-    return get_builtin_gemini_api_key()
+    """ค้นหา Gemini API Key หลักตัวแรกที่พร้อมใช้งาน"""
+    keys = resolve_gemini_api_keys(client_key)
+    return keys[0] if keys else ""
 
 
 def _extract_ast_facts(code: str) -> Dict[str, Any]:
@@ -1068,6 +1149,14 @@ def evaluate_with_ast_fallback(
     }
 
 
+def _is_quota_or_key_error(status_code: int, body_text: str = "") -> bool:
+    """ตรวจสอบว่าเป็นข้อผิดพลาดจากโควตาเต็ม (429 / RESOURCE_EXHAUSTED) หรือปัญหาสิทธิ์ของคีย์ (400/401/403) หรือไม่"""
+    if status_code in (400, 401, 403, 429):
+        return True
+    lower = (body_text or "").lower()
+    return any(tok in lower for tok in ("resource_exhausted", "quota", "rate limit", "api_key_invalid", "exceeded"))
+
+
 async def evaluate_with_gemini(
     prompt: str,
     code: str,
@@ -1080,7 +1169,13 @@ async def evaluate_with_gemini(
     """
     ตรวจงานนักเรียนด้วย Gemini API (LLM) อย่างละเอียด วิเคราะห์ตรรกะ สูตรคำนวณ และผลลัพธ์
     รองรับทั้งใบงานปกติ (10 คะแนน) และงานที่ 5 สอบปฏิบัติ 4 ชุด A–D (Rubric Score 20 คะแนน)
+    พร้อมระบบสลับ API Key สำรองอัตโนมัติ (Multi-Key Quota Failover) เมื่อคีย์ใดคีย์หนึ่งเต็ม
     """
+    global _LAST_WORKING_KEY
+    candidate_keys = resolve_gemini_api_keys(api_key)
+    if not candidate_keys and api_key:
+        candidate_keys = parse_gemini_api_keys(api_key)
+
     is_exam = bool(exam_set) or is_practical_exam_prompt(prompt, assignment_id)
     if is_exam:
         set_key = detect_practical_exam_set(code, filename, student_name, exam_set)
@@ -1134,80 +1229,92 @@ AST Syntax Valid: {facts['valid_syntax']} | SyntaxError: {facts['syntax_error']}
         }
         last_error = ""
         async with httpx.AsyncClient(timeout=35.0) as client:
-            for model in GEMINI_MODELS:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-                try:
-                    resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts:
-                                raw_text = parts[0].get("text", "").strip()
-                                clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text, flags=re.MULTILINE).strip()
-                                parsed = json.loads(clean_json)
-                                ai_items = {int(it.get("id", 0)): it for it in (parsed.get("items") or []) if isinstance(it, dict)}
-                                rubric_scores = []
-                                checklist = []
-                                for idx, crit in enumerate(spec["criteria"]):
-                                    cid = crit["id"]
-                                    mx = crit["max_score"]
-                                    base_item = ast_baseline["rubric_scores"][idx]
-                                    ai_it = ai_items.get(cid, {})
-                                    raw_sc = ai_it.get("score", base_item["score"])
-                                    try:
-                                        sc = max(0, min(mx, int(round(float(raw_sc)))))
-                                    except Exception:
-                                        sc = base_item["score"]
-                                    lvl_word = _criterion_quality_word(sc, mx)
-                                    ev_text = str(ai_it.get("evidence") or base_item["evidence"])
-                                    fb_text = str(ai_it.get("feedback") or crit["levels"].get(str(sc), ""))
-                                    rubric_scores.append({
-                                        "id": cid,
-                                        "title": crit["title"],
-                                        "score": sc,
-                                        "max_score": mx,
-                                        "level_label": lvl_word,
-                                        "evidence": ev_text,
-                                        "feedback": fb_text,
-                                        "levels": crit["levels"],
-                                    })
-                                    checklist.append({
-                                        "criterion": f"{crit['title']} ({sc}/{mx} คะแนน · {lvl_word})",
-                                        "passed": sc >= (mx - 1),
-                                        "score": sc,
-                                        "max_score": mx,
-                                        "level_label": lvl_word,
-                                        "evidence": ev_text,
-                                        "feedback": fb_text,
-                                    })
-                                total_score = sum(r["score"] for r in rubric_scores)
-                                q = get_practical_exam_quality_level(total_score)
-                                short_breakdown = ", ".join(f"ข้อ{r['id']}:{r['score']}/{r['max_score']}" for r in rubric_scores)
-                                note = f"[ชุด {set_key}] {total_score}/20 คะแนน ({q['level']}) | {short_breakdown}"
-                                return {
-                                    "mode": "gemini_ai",
-                                    "model_used": model,
-                                    "is_practical_exam": True,
-                                    "exam_set": set_key,
-                                    "exam_set_title": spec["full_title"],
-                                    "quality_level": q["level"],
-                                    "score": total_score,
-                                    "max_score": 20,
-                                    "status": q["status"],
-                                    "status_label": q["level"],
-                                    "summary": parsed.get("summary") or ast_baseline["summary"],
-                                    "rubric_scores": rubric_scores,
-                                    "checklist": checklist,
-                                    "strengths": parsed.get("strengths") or ast_baseline["strengths"],
-                                    "suggestions": parsed.get("suggestions") or ast_baseline["suggestions"],
-                                    "suggested_teacher_note": note,
-                                }
-                    else:
-                        last_error = f"{model} returned status {resp.status_code}"
-                except Exception as e:
-                    last_error = f"Error calling {model}: {e}"
+            for key_idx, current_key in enumerate(candidate_keys):
+                masked_k = mask_gemini_key(current_key)
+                for model in GEMINI_MODELS:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
+                    try:
+                        resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                if parts:
+                                    raw_text = parts[0].get("text", "").strip()
+                                    clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text, flags=re.MULTILINE).strip()
+                                    parsed = json.loads(clean_json)
+                                    _LAST_WORKING_KEY = current_key
+                                    _QUOTA_EXHAUSTED_KEYS.pop(current_key, None)
+                                    ai_items = {int(it.get("id", 0)): it for it in (parsed.get("items") or []) if isinstance(it, dict)}
+                                    rubric_scores = []
+                                    checklist = []
+                                    for idx, crit in enumerate(spec["criteria"]):
+                                        cid = crit["id"]
+                                        mx = crit["max_score"]
+                                        base_item = ast_baseline["rubric_scores"][idx]
+                                        ai_it = ai_items.get(cid, {})
+                                        raw_sc = ai_it.get("score", base_item["score"])
+                                        try:
+                                            sc = max(0, min(mx, int(round(float(raw_sc)))))
+                                        except Exception:
+                                            sc = base_item["score"]
+                                        lvl_word = _criterion_quality_word(sc, mx)
+                                        ev_text = str(ai_it.get("evidence") or base_item["evidence"])
+                                        fb_text = str(ai_it.get("feedback") or crit["levels"].get(str(sc), ""))
+                                        rubric_scores.append({
+                                            "id": cid,
+                                            "title": crit["title"],
+                                            "score": sc,
+                                            "max_score": mx,
+                                            "level_label": lvl_word,
+                                            "evidence": ev_text,
+                                            "feedback": fb_text,
+                                            "levels": crit["levels"],
+                                        })
+                                        checklist.append({
+                                            "criterion": f"{crit['title']} ({sc}/{mx} คะแนน · {lvl_word})",
+                                            "passed": sc >= (mx - 1),
+                                            "score": sc,
+                                            "max_score": mx,
+                                            "level_label": lvl_word,
+                                            "evidence": ev_text,
+                                            "feedback": fb_text,
+                                        })
+                                    total_score = sum(r["score"] for r in rubric_scores)
+                                    q = get_practical_exam_quality_level(total_score)
+                                    short_breakdown = ", ".join(f"ข้อ{r['id']}:{r['score']}/{r['max_score']}" for r in rubric_scores)
+                                    note = f"[ชุด {set_key}] {total_score}/20 คะแนน ({q['level']}) | {short_breakdown}"
+                                    return {
+                                        "mode": "gemini_ai",
+                                        "model_used": model,
+                                        "api_key_masked": masked_k,
+                                        "api_key_slot": key_idx + 1,
+                                        "api_key_total": len(candidate_keys),
+                                        "failover_used": key_idx > 0,
+                                        "is_practical_exam": True,
+                                        "exam_set": set_key,
+                                        "exam_set_title": spec["full_title"],
+                                        "quality_level": q["level"],
+                                        "score": total_score,
+                                        "max_score": 20,
+                                        "status": q["status"],
+                                        "status_label": q["level"],
+                                        "summary": parsed.get("summary") or ast_baseline["summary"],
+                                        "rubric_scores": rubric_scores,
+                                        "checklist": checklist,
+                                        "strengths": parsed.get("strengths") or ast_baseline["strengths"],
+                                        "suggestions": parsed.get("suggestions") or ast_baseline["suggestions"],
+                                        "suggested_teacher_note": note,
+                                    }
+                        else:
+                            last_error = f"{model} (key #{key_idx + 1} {masked_k}) returned status {resp.status_code}"
+                            if _is_quota_or_key_error(resp.status_code, resp.text):
+                                _QUOTA_EXHAUSTED_KEYS[current_key] = time.time()
+                                logger.warning(f"API Key #{key_idx + 1} ({masked_k}) hit quota/auth limit (HTTP {resp.status_code}); switching to next backup key...")
+                                break
+                    except Exception as e:
+                        last_error = f"Error calling {model} (key #{key_idx + 1} {masked_k}): {e}"
         return ast_baseline
 
     facts = _extract_ast_facts(code)
@@ -1278,32 +1385,44 @@ AST Syntax Valid: {facts['valid_syntax']} | SyntaxError: {facts['syntax_error']}
 
     last_error = ""
     async with httpx.AsyncClient(timeout=35.0) as client:
-        for model in GEMINI_MODELS:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            try:
-                logger.info(f"Calling Gemini API with model: {model}")
-                resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            raw_text = parts[0].get("text", "").strip()
-                            clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text, flags=re.MULTILINE).strip()
-                            parsed = json.loads(clean_json)
-                            parsed["mode"] = "gemini_ai"
-                            parsed["model_used"] = model
-                            return parsed
-                else:
-                    last_error = f"{model} returned status {resp.status_code}: {resp.text[:200]}"
+        for key_idx, current_key in enumerate(candidate_keys):
+            masked_k = mask_gemini_key(current_key)
+            for model in GEMINI_MODELS:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
+                try:
+                    logger.info(f"Calling Gemini API with model: {model} (key #{key_idx + 1}: {masked_k})")
+                    resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                raw_text = parts[0].get("text", "").strip()
+                                clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text, flags=re.MULTILINE).strip()
+                                parsed = json.loads(clean_json)
+                                _LAST_WORKING_KEY = current_key
+                                _QUOTA_EXHAUSTED_KEYS.pop(current_key, None)
+                                parsed["mode"] = "gemini_ai"
+                                parsed["model_used"] = model
+                                parsed["api_key_masked"] = masked_k
+                                parsed["api_key_slot"] = key_idx + 1
+                                parsed["api_key_total"] = len(candidate_keys)
+                                parsed["failover_used"] = key_idx > 0
+                                return parsed
+                    else:
+                        last_error = f"{model} (key #{key_idx + 1} {masked_k}) returned status {resp.status_code}: {resp.text[:200]}"
+                        logger.warning(last_error)
+                        if _is_quota_or_key_error(resp.status_code, resp.text):
+                            _QUOTA_EXHAUSTED_KEYS[current_key] = time.time()
+                            logger.warning(f"API Key #{key_idx + 1} ({masked_k}) hit quota/auth limit; switching to next backup key...")
+                            break
+                except Exception as e:
+                    last_error = f"Error calling {model} (key #{key_idx + 1} {masked_k}): {e}"
                     logger.warning(last_error)
-            except Exception as e:
-                last_error = f"Error calling {model}: {e}"
-                logger.warning(last_error)
 
     # หากเรียก Gemini ไม่สำเร็จ ให้ Fallback มาใช้ AST
-    logger.warning(f"All Gemini models failed. Falling back to AST heuristic. Last error: {last_error}")
+    logger.warning(f"All Gemini models and API keys failed. Falling back to AST heuristic. Last error: {last_error}")
     fallback = evaluate_with_ast_fallback(prompt, code, student_name, filename, exam_set=exam_set, assignment_id=assignment_id)
     fallback["api_warning"] = f"ไม่สามารถเรียก Gemini API ได้ ({last_error}) ระบบจึงประเมินด้วยโครงสร้าง AST แทนชั่วคราว"
     return fallback
@@ -1319,12 +1438,12 @@ async def grade_student_code(
     assignment_id: str = "",
 ) -> Dict[str, Any]:
     """จุดเข้าหลักสำหรับการตรวจงานนักเรียน"""
-    clean_key = resolve_gemini_api_key(api_key)
-    if clean_key:
+    candidate_keys = resolve_gemini_api_keys(api_key)
+    if candidate_keys:
         return await evaluate_with_gemini(
             prompt,
             code,
-            clean_key,
+            ",".join(candidate_keys),
             student_name,
             filename,
             exam_set=exam_set,
