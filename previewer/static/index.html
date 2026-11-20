@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20261117-clean6">
+  <link rel="stylesheet" href="/static/app.css?v=20261120-ui7">
 </head>
 
 <body>
@@ -473,8 +473,12 @@
                   </div>
                   <div class="py-editor-body">
                     <div id="pyEditorLineNumbers" class="py-line-numbers">1</div>
-                    <textarea id="pyCodeEditor" class="py-code-textarea" spellcheck="false"
-                      placeholder="# โค้ด Python ของนักเรียน..."></textarea>
+                    <div class="py-editor-stage">
+                      <pre id="pyCodeHighlight" class="py-code-highlight" aria-hidden="true"><code id="pyCodeHighlightCode"></code></pre>
+                      <textarea id="pyCodeEditor" class="py-code-textarea" spellcheck="false" autocomplete="off"
+                        autocorrect="off" autocapitalize="off" wrap="off"
+                        placeholder="# โค้ด Python ของนักเรียน..."></textarea>
+                    </div>
                   </div>
                 </div>
 
@@ -858,7 +862,7 @@ https://github.com/patvikan24-oss/my-profil-013
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/app.js?v=20261117-clean6"></script>
+  <script src="/static/app.js?v=20261120-ui7"></script>
 </body>
 
 </html>

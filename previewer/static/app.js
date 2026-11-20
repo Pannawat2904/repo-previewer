@@ -114,6 +114,8 @@ const elements = {
   pyOopChipsBar: document.getElementById('pyOopChipsBar'),
   pyEditorStats: document.getElementById('pyEditorStats'),
   pyEditorLineNumbers: document.getElementById('pyEditorLineNumbers'),
+  pyCodeHighlight: document.getElementById('pyCodeHighlight'),
+  pyCodeHighlightCode: document.getElementById('pyCodeHighlightCode'),
   pyCodeEditor: document.getElementById('pyCodeEditor'),
   btnToggleStdin: document.getElementById('btnToggleStdin'),
   pyStdinBox: document.getElementById('pyStdinBox'),
@@ -900,9 +902,7 @@ function setupEventListeners() {
       if (elements.btnResetPythonCode) elements.btnResetPythonCode.style.display = 'inline-flex';
     });
     elements.pyCodeEditor.addEventListener('scroll', () => {
-      if (elements.pyEditorLineNumbers) {
-        elements.pyEditorLineNumbers.scrollTop = elements.pyCodeEditor.scrollTop;
-      }
+      syncPyEditorScroll();
     });
     elements.pyCodeEditor.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -915,6 +915,8 @@ function setupEventListeners() {
         const val = elements.pyCodeEditor.value;
         elements.pyCodeEditor.value = val.substring(0, start) + '    ' + val.substring(end);
         elements.pyCodeEditor.selectionStart = elements.pyCodeEditor.selectionEnd = start + 4;
+        updatePyEditorLineNumbers();
+        if (elements.btnResetPythonCode) elements.btnResetPythonCode.style.display = 'inline-flex';
       }
     });
   }
@@ -981,6 +983,7 @@ function setupEventListeners() {
     if (state.currentIndex >= 0 && state.currentIndex < state.students.length) {
       const student = state.students[state.currentIndex];
       student.note = note;
+      persistLocalStudentReview(student);
       clearTimeout(state.noteDebounceTimer);
       state.noteDebounceTimer = setTimeout(() => {
         saveStudentReview(student.owner, student.repo, null, note);
@@ -2139,9 +2142,12 @@ function applyEvaluationNote(student) {
   student.viewed = true;
   student.note = note;
 
-  saveReviewData(student.owner, student.repo, true, note);
-  renderStudentItem(student);
+  persistLocalStudentReview(student);
+  syncActiveCourseState();
+  renderCourseSelect();
+  updateStudentItemCard(student);
   updateViewedStats();
+  saveStudentReview(student.owner, student.repo, true, note);
   showToast('✓ นำข้อสรุปคะแนนลงบันทึกและติ๊กตรวจแล้วเรียบร้อย!', 'success');
 }
 
@@ -2845,8 +2851,16 @@ async function uploadFilesDirectlyToActiveCourse(files) {
     }
 
     newItems.forEach(newItem => {
-      const existIdx = state.students.findIndex(s => s.key === newItem.key);
+      hydrateStudentReviewState(newItem, course.id);
+      const existIdx = state.students.findIndex(s =>
+        s.key === newItem.key ||
+        (s.source_type === 'upload' && newItem.source_type === 'upload' &&
+          s.raw_input && newItem.raw_input && s.raw_input === newItem.raw_input)
+      );
       if (existIdx >= 0) {
+        const prev = state.students[existIdx];
+        newItem.viewed = !!(newItem.viewed || prev.viewed);
+        if (!newItem.note && prev.note) newItem.note = prev.note;
         state.students[existIdx] = newItem;
       } else {
         state.students.push(newItem);
@@ -3042,12 +3056,24 @@ async function handleStartFetch() {
     }
 
     // คงรายการที่อัปโหลดจากไฟล์ไว้ในวิชานี้ด้วย (ถ้ามี)
+    const activeCourse = getActiveCourse();
+    const activeCourseId = activeCourse ? activeCourse.id : '';
+    const prevByKey = new Map(state.students.map(s => [s.key, s]));
     const uploadedStudents = state.students.filter(s => s.source_type === 'upload');
-    const githubStudents = items.map(it => ({
-      ...it,
-      console_logs: [],
-      network_errors: [],
-    }));
+    const githubStudents = items.map(it => {
+      const merged = {
+        ...it,
+        console_logs: [],
+        network_errors: [],
+      };
+      const prev = prevByKey.get(merged.key);
+      if (prev) {
+        merged.viewed = !!(merged.viewed || prev.viewed);
+        if (!merged.note && prev.note) merged.note = prev.note;
+      }
+      hydrateStudentReviewState(merged, activeCourseId);
+      return merged;
+    });
     state.students = [...uploadedStudents, ...githubStudents];
 
     syncActiveCourseState();
@@ -3122,9 +3148,19 @@ async function handleStartFileUpload() {
     }
 
     // รวมเข้ากับรายการนักเรียนในรายวิชาปัจจุบัน (อัปเดตหากชื่อไฟล์ซ้ำ หรือเพิ่มต่อท้าย)
+    const activeUploadCourse = getActiveCourse();
+    const activeUploadCourseId = activeUploadCourse ? activeUploadCourse.id : '';
     newItems.forEach(newItem => {
-      const existIdx = state.students.findIndex(s => s.key === newItem.key);
+      hydrateStudentReviewState(newItem, activeUploadCourseId);
+      const existIdx = state.students.findIndex(s =>
+        s.key === newItem.key ||
+        (s.source_type === 'upload' && newItem.source_type === 'upload' &&
+          s.raw_input && newItem.raw_input && s.raw_input === newItem.raw_input)
+      );
       if (existIdx >= 0) {
+        const prev = state.students[existIdx];
+        newItem.viewed = !!(newItem.viewed || prev.viewed);
+        if (!newItem.note && prev.note) newItem.note = prev.note;
         state.students[existIdx] = newItem;
       } else {
         state.students.push(newItem);
@@ -3242,6 +3278,17 @@ function handleStreamEvent(event) {
 // -------------------------------------------------------------
 // Student List Rendering & Filtering
 // -------------------------------------------------------------
+function findStudentCardElement(studentKey) {
+  if (!studentKey || !elements.studentsList) return null;
+  const cards = elements.studentsList.querySelectorAll('.student-item');
+  for (const card of cards) {
+    if (card.dataset && card.dataset.studentKey === studentKey) {
+      return card;
+    }
+  }
+  return null;
+}
+
 function renderStudentsList() {
   const list = elements.studentsList;
   list.innerHTML = '';
@@ -3275,9 +3322,9 @@ function renderStudentsList() {
   filtered.forEach((student, idx) => {
     const originalIndex = state.students.indexOf(student);
     const itemEl = document.createElement('div');
-    itemEl.className = `student-item ${originalIndex === state.currentIndex ? 'active' : ''}`;
+    itemEl.className = `student-item ${originalIndex === state.currentIndex ? 'active' : ''} ${student.viewed ? 'is-viewed' : ''}`.trim();
     itemEl.style.animationDelay = `${Math.min(idx * 35, 350)}ms`;
-    itemEl.id = `student-card-${student.key.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    itemEl.dataset.studentKey = student.key || '';
 
     // Status Dot Class
     let dotClass = 'pending';
@@ -3290,21 +3337,19 @@ function renderStudentsList() {
     if (student.status === 'loading') statusTitle = student.loadingMessage || 'กำลังโหลด...';
     else if (student.status === 'error') statusTitle = student.error_message || 'พบข้อผิดพลาด';
 
-    const initial = (student.student_name || student.owner || 'S').trim().charAt(0).toUpperCase();
     const isUploadedItem = student.source_type === 'upload' || student.owner === 'local-upload';
+    const rawFileLabel = (student.raw_input || 'ไฟล์อัปโหลด').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '').trim();
     const subLabel = isUploadedItem
-      ? (student.raw_input || 'ไฟล์อัปโหลด')
-      : (student.owner ? `${student.owner}/${student.repo}` : student.raw_input);
+      ? rawFileLabel
+      : (student.owner ? `${student.owner}/${student.repo}` : (student.raw_input || ''));
+    const showSubLine = subLabel && subLabel.toLowerCase() !== (student.student_name || '').trim().toLowerCase();
 
     itemEl.innerHTML = `
       <div class="student-item-left">
         <div class="student-item-checkbox ${student.viewed ? 'checked' : ''}" title="คลิกเพื่อทำเครื่องหมายว่าตรวจแล้ว"></div>
-        <div class="student-avatar">${escapeHtml(initial)}</div>
         <div class="student-item-details">
           <span class="student-item-name" title="${escapeHtml(student.student_name)}">${escapeHtml(student.student_name)}</span>
-          <span class="student-item-sub" title="${escapeHtml(subLabel)}">
-            ${escapeHtml(subLabel)}
-          </span>
+          ${showSubLine ? `<span class="student-item-sub" title="${escapeHtml(subLabel)}">${escapeHtml(subLabel)}</span>` : ''}
         </div>
       </div>
       <div class="student-item-right">
@@ -3323,7 +3368,7 @@ function renderStudentsList() {
       if (e.target.closest('.btn-remove-student')) {
         e.stopPropagation();
         handleDeleteStudent(originalIndex);
-      } else if (e.target.classList.contains('student-item-checkbox')) {
+      } else if (e.target.closest('.student-item-checkbox')) {
         e.stopPropagation();
         handleViewedToggle(originalIndex, !student.viewed);
       } else {
@@ -3336,12 +3381,13 @@ function renderStudentsList() {
 }
 
 function updateStudentItemCard(student) {
-  const safeId = `student-card-${student.key.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  const el = document.getElementById(safeId);
+  const el = findStudentCardElement(student.key);
   if (!el) {
     renderStudentsList();
     return;
   }
+
+  el.classList.toggle('is-viewed', !!student.viewed);
 
   const dot = el.querySelector('.status-dot');
   if (dot) {
@@ -3352,8 +3398,7 @@ function updateStudentItemCard(student) {
 
   const chk = el.querySelector('.student-item-checkbox');
   if (chk) {
-    if (student.viewed) chk.classList.add('checked');
-    else chk.classList.remove('checked');
+    chk.classList.toggle('checked', !!student.viewed);
   }
 }
 
@@ -3412,14 +3457,16 @@ async function selectStudent(index) {
     elements.studentWorkspace.classList.add('workspace-animate');
   }
 
-  // Highlight active ใน sidebar
-  document.querySelectorAll('.student-item').forEach((item, i) => {
+  // Highlight active ใน sidebar โดยยังคงสถานะติ๊กตรวจแล้วของทุกคนไว้ครบ
+  document.querySelectorAll('.student-item').forEach((item) => {
     item.classList.remove('active');
   });
-  const safeId = `student-card-${student.key.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  const activeCard = document.getElementById(safeId);
+  const activeCard = findStudentCardElement(student.key);
   if (activeCard) {
     activeCard.classList.add('active');
+    activeCard.classList.toggle('is-viewed', !!student.viewed);
+    const activeChk = activeCard.querySelector('.student-item-checkbox');
+    if (activeChk) activeChk.classList.toggle('checked', !!student.viewed);
     if (!isMobile) {
       activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -3696,6 +3743,26 @@ function selectPythonStudioFile(student, filePath, isAutoInit = false) {
   runPythonCodeInStudio(false);
 }
 
+function syncPyEditorScroll() {
+  if (!elements.pyCodeEditor) return;
+  if (elements.pyEditorLineNumbers) {
+    elements.pyEditorLineNumbers.scrollTop = elements.pyCodeEditor.scrollTop;
+  }
+  if (elements.pyCodeHighlight) {
+    elements.pyCodeHighlight.scrollTop = elements.pyCodeEditor.scrollTop;
+    elements.pyCodeHighlight.scrollLeft = elements.pyCodeEditor.scrollLeft;
+  }
+}
+
+function updatePyEditorHighlight() {
+  if (!elements.pyCodeEditor || !elements.pyCodeHighlightCode) return;
+  const raw = elements.pyCodeEditor.value || '';
+  // เพิ่มบรรทัดว่างปิดท้ายเมื่อลงท้ายด้วย \n เพื่อให้ความสูง scroll ของ <pre> ตรงกับ <textarea> เป๊ะ
+  const highlighted = highlightPythonCode(raw) + (raw.endsWith('\n') ? '\n' : '');
+  elements.pyCodeHighlightCode.innerHTML = highlighted;
+  syncPyEditorScroll();
+}
+
 function updatePyEditorLineNumbers() {
   if (!elements.pyCodeEditor || !elements.pyEditorLineNumbers) return;
   const lineCount = (elements.pyCodeEditor.value || '').split('\n').length;
@@ -3707,6 +3774,7 @@ function updatePyEditorLineNumbers() {
   if (elements.pyEditorStats) {
     elements.pyEditorStats.innerText = `${lineCount} บรรทัด · แก้ไขโค้ดเพื่อทดสอบรันได้`;
   }
+  updatePyEditorHighlight();
 }
 
 function renderPythonOopChips(analysis, oopSummary) {
@@ -4299,20 +4367,81 @@ function getCurrentStudent() {
 // -------------------------------------------------------------
 // Viewed & Notes Storage
 // -------------------------------------------------------------
+const STUDENT_REVIEWS_STORAGE_KEY = 'repo_previewer_student_reviews_v1';
+
+function loadLocalStudentReviewsMap() {
+  try {
+    const raw = localStorage.getItem(STUDENT_REVIEWS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function getStudentReviewStorageKeys(student, courseId = '') {
+  if (!student) return [];
+  const cid = courseId || state.activeCourseId || 'default';
+  const keys = [];
+  if (student.key) keys.push(String(student.key).toLowerCase());
+  if (student.owner && student.repo) {
+    keys.push(`${student.owner}/${student.repo}`.toLowerCase());
+  }
+  if (student.source_type === 'upload' || student.owner === 'local-upload') {
+    const rawFile = (student.raw_input || '').replace(/^\[ไฟล์(?:อัปโหลด)?\]\s*/i, '').trim().toLowerCase();
+    const stuName = (student.student_name || '').trim().toLowerCase();
+    if (rawFile) keys.push(`upload::${cid}::file::${rawFile}`);
+    if (stuName) keys.push(`upload::${cid}::name::${stuName}`);
+  }
+  return Array.from(new Set(keys));
+}
+
+function persistLocalStudentReview(student, courseId = '') {
+  if (!student) return;
+  try {
+    const map = loadLocalStudentReviewsMap();
+    const entry = {
+      viewed: !!student.viewed,
+      note: student.note || '',
+      updated_at: Date.now(),
+    };
+    getStudentReviewStorageKeys(student, courseId).forEach(k => {
+      map[k] = entry;
+    });
+    localStorage.setItem(STUDENT_REVIEWS_STORAGE_KEY, JSON.stringify(map));
+  } catch (e) {}
+}
+
+function hydrateStudentReviewState(student, courseId = '') {
+  if (!student) return;
+  const map = loadLocalStudentReviewsMap();
+  const keys = getStudentReviewStorageKeys(student, courseId);
+  for (const k of keys) {
+    const saved = map[k];
+    if (saved && typeof saved === 'object') {
+      if (saved.viewed) student.viewed = true;
+      if (!student.note && saved.note) student.note = saved.note;
+      break;
+    }
+  }
+}
+
 async function handleViewedToggle(index, viewed) {
   if (index < 0 || index >= state.students.length) return;
   const student = state.students[index];
-  student.viewed = viewed;
+  student.viewed = !!viewed;
 
-  if (index === state.currentIndex) {
-    elements.checkViewed.checked = viewed;
+  if (index === state.currentIndex && elements.checkViewed) {
+    elements.checkViewed.checked = !!viewed;
   }
 
+  persistLocalStudentReview(student);
   syncActiveCourseState();
   renderCourseSelect();
   updateStudentItemCard(student);
   updateViewedStats();
-  await saveStudentReview(student.owner, student.repo, viewed, null);
+  await saveStudentReview(student.owner, student.repo, !!viewed, null);
 }
 
 async function saveStudentReview(owner, repo, viewed, note) {
@@ -4655,7 +4784,73 @@ function renderSyntaxCode(content, ext) {
 /**
  * Lightweight safe syntax highlighter สำหรับ HTML, CSS, JS, Python, JSON
  */
+/**
+ * Single-pass Python syntax highlighter พร้อมเส้นนำระดับย่อหน้า (Indentation Guides)
+ * คงจำนวนตัวอักษรและระยะห่างตรงกับโค้ดต้นฉบับของนักเรียน 100%
+ */
+function highlightPythonCode(rawCode) {
+  const normalized = String(rawCode || '').replace(/\r\n/g, '\n');
+  const tokenRegex = /([furbFURB]{0,2}(?:"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'))|(#[^\n]*)|(@[A-Za-z_]\w*)|\b(class|def)\b([ \t]+)([A-Za-z_]\w*)|\b(if|elif|else|for|while|in|return|import|from|as|try|except|finally|raise|with|pass|break|continue|and|or|not|is|lambda|yield|global|nonlocal|assert|del|async|await|match|case)\b|\b(True|False|None)\b|\b(self|cls)\b|\b(print|input|int|float|str|bool|list|dict|set|tuple|len|range|sum|min|max|abs|round|type|isinstance|issubclass|super|open|enumerate|zip|map|filter|sorted|reversed|format|chr|ord|hex|bin|oct|pow|divmod|any|all|dir|id|vars)\b|\b([A-Za-z_]\w*)(?=\s*\()|\b(\d+(?:\.\d+)?)\b|(==|!=|<=|>=|->|\+=|-=|\*=|\/=|\/\/|\*\*|[+\-*/%=<>:&|^~])/g;
+
+  const lines = normalized.split('\n');
+  return lines.map(line => {
+    // 1. คงและตกแต่ง Indentation ด้านหน้า (ทั้ง Space 4 ช่อง และ Tab) โดยไม่เปลี่ยนความกว้างตัวอักษร
+    const indentMatch = line.match(/^([ \t]+)/);
+    let indentHtml = '';
+    let body = line;
+    if (indentMatch) {
+      const ws = indentMatch[1];
+      body = line.slice(ws.length);
+      indentHtml = ws.replace(/( {4}|\t)/g, '<span class="tok-indent">$1</span>');
+    }
+
+    // 2. ระบายสีโค้ดแบบ Single-Pass Tokenizer (ไม่ทับซ้อนภายใน string หรือ comment)
+    let out = '';
+    let lastIdx = 0;
+    tokenRegex.lastIndex = 0;
+    let m;
+    while ((m = tokenRegex.exec(body)) !== null) {
+      if (m.index > lastIdx) {
+        out += escapeHtml(body.slice(lastIdx, m.index));
+      }
+      if (m[1] !== undefined) {
+        out += `<span class="tok-str">${escapeHtml(m[1])}</span>`;
+      } else if (m[2] !== undefined) {
+        out += `<span class="tok-comment">${escapeHtml(m[2])}</span>`;
+      } else if (m[3] !== undefined) {
+        out += `<span class="tok-decorator">${escapeHtml(m[3])}</span>`;
+      } else if (m[4] !== undefined) {
+        out += `<span class="tok-kw">${escapeHtml(m[4])}</span>${escapeHtml(m[5])}<span class="tok-def">${escapeHtml(m[6])}</span>`;
+      } else if (m[7] !== undefined) {
+        out += `<span class="tok-kw">${escapeHtml(m[7])}</span>`;
+      } else if (m[8] !== undefined) {
+        out += `<span class="tok-const">${escapeHtml(m[8])}</span>`;
+      } else if (m[9] !== undefined) {
+        out += `<span class="tok-self">${escapeHtml(m[9])}</span>`;
+      } else if (m[10] !== undefined) {
+        out += `<span class="tok-builtin">${escapeHtml(m[10])}</span>`;
+      } else if (m[11] !== undefined) {
+        out += `<span class="tok-func">${escapeHtml(m[11])}</span>`;
+      } else if (m[12] !== undefined) {
+        out += `<span class="tok-num">${escapeHtml(m[12])}</span>`;
+      } else if (m[13] !== undefined) {
+        out += `<span class="tok-op">${escapeHtml(m[13])}</span>`;
+      }
+      lastIdx = tokenRegex.lastIndex;
+    }
+    if (lastIdx < body.length) {
+      out += escapeHtml(body.slice(lastIdx));
+    }
+
+    return indentHtml + out;
+  }).join('\n');
+}
+
 function highlightSyntax(rawCode, ext) {
+  if (ext === 'py') {
+    return highlightPythonCode(rawCode);
+  }
+
   let escaped = escapeHtml(rawCode);
 
   if (ext === 'html' || ext === 'htm') {
@@ -4671,11 +4866,6 @@ function highlightSyntax(rawCode, ext) {
     escaped = escaped.replace(keywords, '<span style="color: #ff7b72;">$1</span>');
     escaped = escaped.replace(/(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g, '<span style="color: #a5d6ff;">$1</span>');
     escaped = escaped.replace(/(\/\/.*$)/gm, '<span style="color: #8b949e; font-style: italic;">$1</span>');
-  } else if (ext === 'py') {
-    const pyKeywords = /\b(class|def|return|if|elif|else|for|while|in|import|from|as|try|except|finally|raise|with|pass|break|continue|True|False|None|and|or|not|super|self)\b/g;
-    escaped = escaped.replace(pyKeywords, '<span style="color: #ff7b72;">$1</span>');
-    escaped = escaped.replace(/(&quot;.*?&quot;|&#039;.*?&#039;)/g, '<span style="color: #a5d6ff;">$1</span>');
-    escaped = escaped.replace(/(#.*$)/gm, '<span style="color: #8b949e; font-style: italic;">$1</span>');
   }
 
   return escaped;

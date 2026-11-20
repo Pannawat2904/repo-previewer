@@ -407,8 +407,8 @@ kbd {
    Left Sidebar (Compact Liquid Glass Panel)
    ------------------------------------------------------------- */
 .sidebar {
-  width: 250px;
-  min-width: 240px;
+  width: 280px;
+  min-width: 265px;
   background: rgba(10, 15, 28, 0.75);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -737,9 +737,10 @@ kbd {
    ------------------------------------------------------------- */
 .student-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 10px 10px 10px 12px;
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur-sm);
   -webkit-backdrop-filter: var(--glass-blur-sm);
@@ -753,6 +754,16 @@ kbd {
   overflow: hidden;
   flex-shrink: 0;
   animation: cardSlideIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.student-item.is-viewed {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.65) 100%);
+}
+
+.student-item.is-viewed.active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(14, 165, 233, 0.18) 100%);
 }
 
 @keyframes cardSlideIn {
@@ -798,17 +809,18 @@ kbd {
 
 .student-item-left {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow: hidden;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
   flex: 1;
 }
 
 .student-item-checkbox {
   width: 20px;
   height: 20px;
+  margin-top: 1px;
   border-radius: var(--radius-xs);
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.04);
   display: flex;
   align-items: center;
@@ -837,54 +849,44 @@ kbd {
 }
 
 .student-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(129, 140, 248, 0.25));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--accent-cyan);
-  font-weight: 700;
-  font-size: 0.82rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  user-select: none;
+  display: none;
 }
 
 .student-item-details {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  line-height: 1.35;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.32;
 }
 
 .student-item-name {
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   letter-spacing: -0.01em;
 }
 
 .student-item-sub {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: var(--text-secondary);
   font-family: var(--font-code);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.85;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  opacity: 0.82;
 }
 
 .student-item-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   flex-shrink: 0;
+  padding-top: 2px;
 }
 
 .btn-remove-student {
@@ -3304,37 +3306,139 @@ select.form-input {
 
 .py-line-numbers,
 .py-editor-lines {
-  width: 38px;
-  padding: 8px 6px;
+  width: 42px;
+  padding: 10px 8px;
   text-align: right;
   font-family: var(--font-code);
-  font-size: 0.82rem;
-  line-height: 1.48;
-  color: #475569;
-  background: rgba(6, 10, 22, 0.65);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #64748b;
+  background: rgba(6, 10, 22, 0.8);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
   user-select: none;
   overflow: hidden;
   white-space: pre;
   flex-shrink: 0;
 }
 
-.py-code-textarea {
+.py-editor-stage {
+  position: relative;
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(7, 11, 24, 0.82);
+}
+
+.py-code-highlight,
+.py-code-textarea {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  background: transparent;
+  margin: 0;
+  padding: 10px 14px;
   border: none;
   outline: none;
-  resize: none;
-  padding: 8px 10px;
-  color: #f1f5f9;
+  box-sizing: border-box;
   font-family: var(--font-code);
-  font-size: 0.82rem;
-  line-height: 1.48;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  letter-spacing: 0;
   tab-size: 4;
+  -moz-tab-size: 4;
   white-space: pre;
+  word-wrap: normal;
+  overflow-wrap: normal;
+}
+
+.py-code-highlight {
+  pointer-events: none;
+  overflow: hidden;
+  color: #e2e8f0;
+  z-index: 1;
+}
+
+.py-code-highlight code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  tab-size: inherit;
+  white-space: pre;
+  display: block;
+}
+
+.py-code-textarea {
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #38bdf8;
+  resize: none;
   overflow: auto;
+  z-index: 2;
+}
+
+.py-code-textarea::selection {
+  background: rgba(56, 189, 248, 0.28);
+}
+
+.py-code-textarea::placeholder {
+  color: rgba(148, 163, 184, 0.45);
+  -webkit-text-fill-color: rgba(148, 163, 184, 0.45);
+}
+
+/* Python Syntax Highlighting Theme (VS Code / Tokyo Night inspired) */
+.tok-indent {
+  box-shadow: inset 1px 0 0 rgba(148, 163, 184, 0.2);
+}
+
+.tok-kw {
+  color: #c084fc;
+  font-weight: 500;
+}
+
+.tok-def {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.tok-builtin {
+  color: #67e8f9;
+}
+
+.tok-func {
+  color: #60a5fa;
+}
+
+.tok-str {
+  color: #86efac;
+}
+
+.tok-num {
+  color: #fbbf24;
+}
+
+.tok-const {
+  color: #fb923c;
+  font-weight: 500;
+}
+
+.tok-self {
+  color: #fb7185;
+  font-style: italic;
+}
+
+.tok-decorator {
+  color: #f59e0b;
+}
+
+.tok-op {
+  color: #93c5fd;
+}
+
+.tok-comment {
+  color: #64748b;
+  font-style: italic;
 }
 
 .py-stdin-box {
