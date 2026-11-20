@@ -2545,6 +2545,39 @@ function renderStudioPromptPane(student) {
   });
 }
 
+function buildAnalyzingShowcaseHtml(student, asg, examSetCode = null, isCompact = false) {
+  const stuName = (student && (student.student_name || student.repo)) || 'นักเรียน';
+  const isExam = isPracticalExamAssignment(asg) || Boolean(examSetCode);
+  const setMeta = (examSetCode && PRACTICAL_EXAM_SETS_META[examSetCode]) ? PRACTICAL_EXAM_SETS_META[examSetCode] : null;
+  const setBadgeHtml = setMeta
+    ? `<span class="ai-meta-pill set-pill">🧪 ${escapeHtml(setMeta.fullTitle)} (20 คะแนน)</span>`
+    : (asg && asg.title ? `<span class="ai-meta-pill">📋 ${escapeHtml(asg.title)}</span>` : '');
+
+  return `
+    <div class="ai-analyzing-showcase ${isCompact ? 'compact' : ''}">
+      <div class="ai-analyzing-orb-wrap">
+        <div class="ai-orb-ring-outer"></div>
+        <div class="ai-orb-ring-inner"></div>
+        <div class="ai-orb-core">🤖</div>
+      </div>
+      <div class="ai-analyzing-title">กำลังวิเคราะห์โค้ดและประเมินผลตามเกณฑ์ Rubric...</div>
+      <div class="ai-analyzing-meta-badges">
+        <span class="ai-meta-pill">👤 ${escapeHtml(stuName)}</span>
+        ${setBadgeHtml}
+      </div>
+      <div class="ai-shimmer-progress-track">
+        <div class="ai-shimmer-progress-bar"></div>
+      </div>
+      <div class="ai-analyzing-steps">
+        <div class="ai-step-chip"><span class="ai-step-dot"></span><span>1. ตรวจโครงสร้าง AST & การรับข้อมูลตัวแปร</span></div>
+        <div class="ai-step-chip"><span class="ai-step-dot"></span><span>2. ตรวจ Class, Attributes, Object & Method</span></div>
+        <div class="ai-step-chip"><span class="ai-step-dot"></span><span>3. ตรวจ Function, Parameter & การส่งค่ากลับ</span></div>
+        <div class="ai-step-chip"><span class="ai-step-dot"></span><span>4. ตรวจคำสั่งวนซ้ำ, เงื่อนไข & ${isExam ? 'รวมคะแนน 20 คะแนน' : 'สรุปผลคะแนน'}</span></div>
+      </div>
+    </div>
+  `;
+}
+
 async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = undefined, isConfirmedNow = false) {
   if (!student) student = getCurrentStudent();
   if (!student) return;
@@ -2567,18 +2600,24 @@ async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = 
   }
 
   const examSetToSend = student.confirmed_exam_set || student.preferred_exam_set || undefined;
+  state.isGradingStudentKey = student.key;
+  state.isGradingExamSet = examSetToSend || null;
 
-  // กำหนดสถานะปุ่ม
+  // กำหนดสถานะปุ่มและแสดงการ์ดกำลังวิเคราะห์ผลลัพธ์แบบสวยงามทันที
   if (elements.assignmentGradeBadge) {
     elements.assignmentGradeBadge.className = 'badge badge-subtle';
-    elements.assignmentGradeBadge.textContent = '⏳ กำลังตรวจ...';
+    elements.assignmentGradeBadge.textContent = '⏳ กำลังวิเคราะห์...';
   }
   if (elements.btnGradeStudentInStudio) {
     elements.btnGradeStudentInStudio.disabled = true;
-    elements.btnGradeStudentInStudio.textContent = '⏳ กำลังตรวจ...';
+    elements.btnGradeStudentInStudio.textContent = '⏳ กำลังวิเคราะห์...';
   }
-
-  showToast(`กำลังวิเคราะห์โค้ดของ ${student.student_name || student.repo} ตามโจทย์ (${asg ? asg.title : 'งาน'})...`, 'info');
+  if (elements.pyPromptBody) {
+    elements.pyPromptBody.innerHTML = buildAnalyzingShowcaseHtml(student, asg, examSetToSend, true);
+  }
+  if (state.activeTab === 'inspect') {
+    renderInspectTab(student);
+  }
 
   try {
     let codeToGrade = '';
@@ -2632,9 +2671,15 @@ async function gradeCurrentStudentAgainstAssignment(student, preferredExamSet = 
   } catch (e) {
     showToast(`เกิดข้อผิดพลาดในการตรวจ: ${e.message}`, 'error');
   } finally {
+    state.isGradingStudentKey = null;
+    state.isGradingExamSet = null;
     if (elements.btnGradeStudentInStudio) {
       elements.btnGradeStudentInStudio.disabled = false;
       elements.btnGradeStudentInStudio.textContent = '⚡ ตรวจตามโจทย์';
+    }
+    renderStudioPromptPane(student);
+    if (state.activeTab === 'inspect') {
+      renderInspectTab(student);
     }
   }
 }
@@ -4407,8 +4452,20 @@ async function runPythonCodeInStudio(allowInteractivePrompt = false) {
   }
   elements.pyOutputConsole.innerHTML = `
     <div class="py-console-loading">
-      <div class="spinner-sm"></div>
-      <span>${state.pyodideInstance ? 'กำลังประมวลผลโค้ด Python และตรวจสอบอ็อบเจกต์ OOP...' : 'กำลังโหลดเอนจิน Python (Pyodide WebAssembly) ครั้งแรก (ใช้เวลาประมาณ 2-3 วินาที)...'}</span>
+      <div class="ai-analyzing-orb-wrap" style="width:52px; height:52px;">
+        <div class="ai-orb-ring-outer"></div>
+        <div class="ai-orb-ring-inner"></div>
+        <div class="ai-orb-core" style="width:28px; height:28px; font-size:1rem;">🐍</div>
+      </div>
+      <div class="ai-analyzing-title" style="font-size:0.94rem;">
+        ${state.pyodideInstance ? 'กำลังรันโค้ดและวิเคราะห์ผลลัพธ์การทำงาน...' : 'กำลังเตรียมเอนจิน Python (Pyodide WebAssembly)...'}
+      </div>
+      <div class="ai-analyzing-sub" style="font-size:0.78rem;">
+        ${state.pyodideInstance ? 'ประมวลผลคำสั่ง Python · ตรวจสอบ Class, Object และดักจับ Output Console' : 'โหลดสภาพแวดล้อม Python ในเบราว์เซอร์ครั้งแรก (ใช้เวลาประมาณ 2–3 วินาที)'}
+      </div>
+      <div class="ai-shimmer-progress-track" style="max-width:300px;">
+        <div class="ai-shimmer-progress-bar"></div>
+      </div>
     </div>
   `;
 
@@ -5526,6 +5583,21 @@ function renderInspectTab(student) {
   const networkErrors = student.network_errors || [];
 
   // 0. การ์ดผลการตรวจตามโจทย์ & เกณฑ์การให้คะแนน (Assignment Rubric Evaluation)
+  if (student && state.isGradingStudentKey === student.key) {
+    const analyzingCard = document.createElement('div');
+    analyzingCard.className = 'inspect-card';
+    analyzingCard.innerHTML = `
+      <div class="inspect-card-body" style="padding: 16px;">
+        <div class="eval-rubric-code-split">
+          ${buildAnalyzingShowcaseHtml(student, getActiveAssignmentData(), state.isGradingExamSet, false)}
+          ${buildInlineCodePreviewHtml(student)}
+        </div>
+      </div>
+    `;
+    container.appendChild(analyzingCard);
+    return;
+  }
+
   const evalInfo = student.assignment_evaluation;
   if (evalInfo) {
     const evalCard = document.createElement('div');
